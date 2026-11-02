@@ -6,10 +6,46 @@ The canonical development directory is `/Users/devilhill/Codes/cuberel`.
 Product source, tests, configuration and documentation belong in this repository;
 temporary build directories may live under `/private/tmp`.
 
-Development starts with the independent package and backend build baseline.
-Query expressions, SQL, Arrow integration and runtime IR lowering are not yet
-implemented. The smoke example initializes a real device and round-trips a
-buffer; it does **not** compile or launch a compute kernel.
+The library supports runtime expression construction, schema/type validation,
+and host reference evaluation of non-nullable `f32` addition and multiplication.
+SQL, Arrow integration and runtime CubeCL IR lowering are not yet implemented.
+The backend smoke example separately initializes a real device and round-trips
+a buffer; it does **not** compile or launch a compute kernel.
+
+## Expressions and host reference evaluation
+
+```rust
+use cuberel::{Batch, ColumnData, DataType, Parameters, Schema, col, param, prepare};
+
+let schema = Schema::new(
+    &[("a", DataType::F32), ("b", DataType::F32)],
+    &[("scale", DataType::F32), ("bias", DataType::F32)],
+)?;
+let expression = col("a") * param("scale") + col("b") + param("bias");
+let program = prepare(&expression, &schema)?;
+let a = [1.0_f32, 2.0, 3.0];
+let b = [10.0_f32, 20.0, 30.0];
+let batch = Batch::new(a.len())
+    .with_column("a", ColumnData::F32(&a))?
+    .with_column("b", ColumnData::F32(&b))?;
+let parameters = Parameters::new()
+    .with("scale", 2.0_f32)?
+    .with("bias", 1.0_f32)?;
+let result = program.evaluate_reference(&batch, &parameters)?;
+assert_eq!(result, [13.0, 25.0, 37.0]);
+```
+
+A prepared program can be evaluated again with new named parameters or columns.
+`evaluate_reference` is an independent host interpreter, not a CubeCL CPU kernel,
+and does not initialize a device. It works with no runtime feature enabled:
+
+```sh
+cargo run --locked --no-default-features --example reference_expr
+cargo test --locked --no-default-features --test expressions
+```
+
+See [the expression API and semantics](docs/typed-expressions.md) for preparation
+limits, error handling, raw node graphs and the boundaries of this feature.
 
 ## Dependency baseline
 
