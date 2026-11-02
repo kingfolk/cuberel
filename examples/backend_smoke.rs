@@ -1,13 +1,15 @@
 //! Check device initialization and buffer transfers; this does not launch a kernel.
-use std::error::Error;
+use std::{env, error::Error};
+
+use cubecl::Device;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let backend = std::env::args()
+    let backend = env::args()
         .nth(1)
         .ok_or("select a backend: cargo run --example backend_smoke -- cpu (or metal)")?;
     let device = match backend.as_str() {
-        "cpu" => cubecl::Device::cpu()?,
-        "metal" => cubecl::Device::metal(Default::default())?,
+        "cpu" => Device::cpu()?,
+        "metal" => Device::metal(Default::default())?,
         _ => return Err(format!("unknown backend {backend:?}; expected cpu or metal").into()),
     };
     let client = device.client();
