@@ -12,6 +12,9 @@
 //! Both features can be enabled together. Backend selection must be explicit in
 //! examples and tests, so a missing GPU cannot silently fall back to the CPU.
 
+pub mod abi;
+pub mod cubecl_abi;
+
 mod error;
 mod expr;
 mod reference;

@@ -8,7 +8,9 @@ temporary build directories may live under `/private/tmp`.
 
 The library supports runtime expression construction, schema/type validation,
 and host reference evaluation of non-nullable `f32` addition and multiplication.
-SQL, Arrow integration and runtime CubeCL IR lowering are not yet implemented.
+A shared binding layout now drives CubeCL buffer/scalar declarations and argument
+registration, with real CPU and Metal kernel tests. General expression-to-IR
+lowering, SQL and Arrow integration are not yet implemented.
 The backend smoke example separately initializes a real device and round-trips
 a buffer; it does **not** compile or launch a compute kernel.
 
@@ -46,6 +48,26 @@ cargo test --locked --no-default-features --test expressions
 
 See [the expression API and semantics](docs/typed-expressions.md) for preparation
 limits, error handling, raw node graphs and the boundaries of this feature.
+
+## Kernel binding ABI
+
+`cuberel::abi::BindingLayout::new(&program)` determines input/output buffer order,
+physical scalar types and per-type scalar ordinals. The same layout declares
+CubeCL IR arguments and validates/registers runtime arguments through
+`cuberel::cubecl_abi`. It checks lengths, capacity, alignment, U32 address bounds,
+device ownership and output aliasing before launcher registration. Empty batches
+skip submission. The device adapter is a low-level interface; an arbitrary kernel
+body still requires an unsafe caller contract.
+
+```sh
+cargo run --locked --no-default-features --example binding_layout
+cargo test --locked --no-default-features --test binding_layout
+cargo test --locked --features metal --test binding_device
+```
+
+See [the binding ABI and validation report](docs/binding-layout.md). Its device
+tests build a small probe kernel directly with CubeCL IR APIs, without `#[cube]`.
+They verify argument transport; the general query emitter is the next work item.
 
 ## Dependency baseline
 
