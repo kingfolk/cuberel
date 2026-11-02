@@ -1,0 +1,7 @@
+# Local planning documents and agent instructions
+/DESIGN.md
+/MILESTONE-01.md
+/AGENTS.md
+
+# Rust build artifacts and CubeCL runtime caches
+/target/

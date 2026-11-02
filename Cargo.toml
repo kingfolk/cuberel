@@ -1,0 +1,18 @@
+[package]
+name = "cuberel"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "A Rust query compiler targeting portable compute kernels through CubeCL"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[features]
+default = ["cpu"]
+cpu = ["cubecl/cpu"]
+# Native Metal runtime, rather than CubeCL's wgpu-based `metal` alias.
+metal = ["cubecl/metal-native"]
+
+[dependencies]
+# This revision is on kingfolk's fork; it is not an upstream release.
+cubecl = { git = "https://github.com/kingfolk/cubecl.git", rev = "5037c0639ce3b1205392bdbe43dcf25e2ea09e29", default-features = false, features = ["std"] }
