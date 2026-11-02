@@ -97,7 +97,9 @@ substitute for diagnosing future failures on other systems.
 
 ## Remaining milestone work
 
-Typed expressions/reference evaluation, binding ABI, runtime CubeCL IR emission,
-query execution, kernel cache identity and kernel failure propagation remain
-unimplemented. No SQL, Arrow data processing, JIT query correctness or performance
-claim follows from these build and transfer checks.
+At the time of this build-baseline work item, typed expressions/reference
+evaluation, binding ABI, runtime CubeCL IR emission, query execution, kernel cache
+identity and kernel failure propagation were unimplemented. The subsequent
+[typed-expression work item](typed-expressions.md) adds expression preparation
+and host reference evaluation. No SQL, Arrow data processing, JIT query
+correctness or performance claim follows from the build and transfer checks here.
