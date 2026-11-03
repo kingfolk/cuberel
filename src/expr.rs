@@ -132,6 +132,12 @@ pub struct TypedExpr {
 }
 
 impl TypedExpr {
+    pub(crate) fn with_op(&self, op: ScalarOp) -> Self {
+        Self {
+            op,
+            data_type: self.data_type,
+        }
+    }
     pub fn op(&self) -> ScalarOp {
         self.op
     }

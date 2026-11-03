@@ -1,9 +1,19 @@
 //! Synchronous execution of prepared F32 programs on a selected CubeCL client.
 
-use std::{error::Error as StdError, fmt};
+use std::{
+    error::Error as StdError,
+    fmt,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 
 use cubecl::{
-    prelude::{AddressType, Client, CubeCount, CubeDim, ExecutionMode, KernelSettings},
+    prelude::{
+        AddressType, Client, CubeCount, CubeDim, ExecutionMode, KernelId, KernelMetadata,
+        KernelSettings,
+    },
     server::ServerError,
 };
 
@@ -11,7 +21,7 @@ use crate::{
     Batch, KernelProgram, Parameters,
     abi::{BindingError, BindingLayout, PhysicalType},
     cubecl_abi::DeviceBuffer,
-    emitter::ExpressionKernel,
+    emitter::{ExpressionIdentity, ExpressionKernel},
 };
 
 /// A selected device and a fixed one-dimensional workgroup size. No CPU fallback.
@@ -20,6 +30,7 @@ use crate::{
 pub struct Executor {
     client: Client,
     cube_size: u32,
+    define_count: Arc<AtomicUsize>,
 }
 
 impl Executor {
@@ -41,11 +52,46 @@ impl Executor {
                 reason: "cube size must be positive and fit the device limits",
             });
         }
-        Ok(Self { client, cube_size })
+        Ok(Self {
+            client,
+            cube_size,
+            define_count: Arc::new(AtomicUsize::new(0)),
+        })
     }
 
     pub fn cube_size(&self) -> u32 {
         self.cube_size
+    }
+
+    /// IR definition attempts for kernels submitted by this executor and its
+    /// clones. Counts failed definitions too; not driver compilations or disk hits.
+    /// Observe after checked readback. Other executors have independent counters,
+    /// but can share CubeCL cache entries and therefore define nothing themselves.
+    pub fn define_count(&self) -> usize {
+        self.define_count.load(Ordering::Relaxed)
+    }
+
+    /// Return the `KernelId` that will be used for compilation and caching
+    /// of this program on this executor's device and settings.
+    pub fn kernel_id(&self, program: &KernelProgram) -> KernelId {
+        let kernel = ExpressionKernel::new(
+            program.clone(),
+            self.client.clone(),
+            self.settings(),
+            self.define_count.clone(),
+        );
+        kernel.id()
+    }
+
+    /// Return the structural compilation identity for this program.
+    pub fn kernel_identity(&self, program: &KernelProgram) -> ExpressionIdentity {
+        let kernel = ExpressionKernel::new(
+            program.clone(),
+            self.client.clone(),
+            self.settings(),
+            self.define_count.clone(),
+        );
+        kernel.identity()
     }
 
     fn settings(&self) -> KernelSettings {
@@ -107,7 +153,12 @@ impl Executor {
         });
         let bound = layout.bind_device(&self.client, u64::from(rows), &buffers, parameters)?;
         let settings = self.settings();
-        let kernel = ExpressionKernel::new(program.clone(), self.client.clone(), settings.clone());
+        let kernel = ExpressionKernel::new(
+            program.clone(),
+            self.client.clone(),
+            settings.clone(),
+            self.define_count.clone(),
+        );
         // SAFETY: this private emitter uses the same immutable layout/settings,
         // guards every load/store by row_count and has no barriers or aliasing.
         unsafe {

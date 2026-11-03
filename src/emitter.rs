@@ -1,3 +1,11 @@
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
+
 use cubecl::{
     ir::{
         Builtin, FloatKind, OpInserter,
@@ -19,17 +27,20 @@ use cubecl::{
 use crate::{ExprId, KernelProgram, ScalarOp, TypedExpr, abi::BindingLayout};
 
 // Change when emitted semantics or instruction policy changes.
-const CODEGEN_VERSION: u32 = 3;
+pub const CODEGEN_VERSION: u32 = 3;
 
-// Minimal structural identity required for correct execution. Normalization and
-// cache instrumentation are a separate milestone item. Values/handles are absent.
+/// Structural identity for compilation and caching of an expression kernel.
+/// Dynamic values, handles, and row counts are absent.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct ExpressionIdentity {
-    version: u32,
-    nodes: Vec<TypedExpr>,
-    root: ExprId,
-    layout: BindingLayout,
-    device_checksum: u64,
+pub struct ExpressionIdentity {
+    pub version: u32,
+    pub normalization_version: u32,
+    pub settings: KernelSettings,
+    pub target_name: String,
+    pub nodes: Vec<TypedExpr>,
+    pub root: ExprId,
+    pub layout: BindingLayout,
+    pub device_checksum: u64,
 }
 
 pub(crate) struct ExpressionKernel {
@@ -37,15 +48,54 @@ pub(crate) struct ExpressionKernel {
     layout: BindingLayout,
     client: Client,
     settings: KernelSettings,
+    define_count: Arc<AtomicUsize>,
 }
 
 impl ExpressionKernel {
-    pub(crate) fn new(program: KernelProgram, client: Client, settings: KernelSettings) -> Self {
+    pub(crate) fn new(
+        program: KernelProgram,
+        client: Client,
+        settings: KernelSettings,
+        define_count: Arc<AtomicUsize>,
+    ) -> Self {
         Self {
             layout: BindingLayout::new(&program),
             program,
             client,
             settings,
+            define_count,
+        }
+    }
+
+    pub(crate) fn identity(&self) -> ExpressionIdentity {
+        let mut nodes = Vec::new();
+        let mut remapped: Vec<ExprId> = Vec::with_capacity(self.program.nodes().len());
+        let mut interned = HashMap::new();
+        // Remove duplicate pure nodes; preserve operand order and floating-point
+        // grouping. All arena nodes, including dead inputs, still participate.
+        for node in self.program.nodes() {
+            let op = match node.op() {
+                ScalarOp::Add(a, b) => ScalarOp::Add(remapped[a.index()], remapped[b.index()]),
+                ScalarOp::Mul(a, b) => ScalarOp::Mul(remapped[a.index()], remapped[b.index()]),
+                leaf => leaf,
+            };
+            let canonical = node.with_op(op);
+            let id = *interned.entry(canonical.clone()).or_insert_with(|| {
+                let id = ExprId::new(nodes.len());
+                nodes.push(canonical);
+                id
+            });
+            remapped.push(id);
+        }
+        ExpressionIdentity {
+            version: CODEGEN_VERSION,
+            normalization_version: 1,
+            nodes,
+            root: remapped[self.program.root().index()],
+            layout: self.layout.clone(),
+            device_checksum: self.client.properties().checksum(),
+            target_name: self.client.name().into(),
+            settings: self.settings.clone(),
         }
     }
 }
@@ -53,13 +103,7 @@ impl ExpressionKernel {
 impl KernelMetadata for ExpressionKernel {
     fn id(&self) -> KernelId {
         KernelId::new::<Self>()
-            .info(ExpressionIdentity {
-                version: CODEGEN_VERSION,
-                nodes: self.program.nodes().to_vec(),
-                root: self.program.root(),
-                layout: self.layout.clone(),
-                device_checksum: self.client.properties().checksum(),
-            })
+            .info(self.identity())
             .cube_dim(self.settings.cube_dim)
             .address_type(self.settings.address_type)
             .mode(self.settings.execution_mode)
@@ -72,6 +116,7 @@ impl KernelMetadata for ExpressionKernel {
 
 impl CubeKernel for ExpressionKernel {
     fn define(&self) -> KernelDefinition {
+        self.define_count.fetch_add(1, Ordering::Relaxed);
         let settings = self
             .settings
             .clone()

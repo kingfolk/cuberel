@@ -3,8 +3,8 @@
 Milestone 01 work item 3 provides a versioned ABI shared by IR declarations and
 runtime argument registration. It is product code for the later query emitter.
 The device tests use a manually written IR probe. Automatic expression lowering
-is now provided by [the executor](runtime-emitter.md); broader compilation
-identity and cache instrumentation remain work item 5.
+is now provided by [the executor](runtime-emitter.md); work item 5 adds
+[normalized identity and scoped definition observation](kernel-identity.md).
 
 ## Layout and host binding
 
@@ -93,10 +93,11 @@ in-place output are outside ABI version 1.
 ## Verification
 
 At this work item's completion on 2026-11-01, the combined suite passed 35 tests.
-After temporary-interpreter removal, the current suite has 29 integration tests:
+After temporary-interpreter removal, work item 4 passed 29 integration tests:
 12 frontend, 10 layout, 3 ABI device, 2 backend buffer and 2 expression-device
 conformance tests. The ABI probes still execute real CPU and native Metal kernels
-and read results. See `runtime-emitter.md` for the current validation matrix.
+and read results. Work item 5 expands the full suite to 34 tests; see
+`kernel-identity.md` for the current validation matrix.
 
 The probes deliberately use schema order different from expression and supplied
 argument order, two distinct F32 parameters, offset input views, spare allocation
