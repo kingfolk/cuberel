@@ -115,5 +115,6 @@ Clippy with all features/targets and `-D warnings`, and rustdoc without runtime
 features and with `-D warnings`, passed using the toolchain and temporary target
 directory documented in the build baseline.
 
-The next work item adds a single binding layout consumed by the compiler and
-launcher. This feature's named host binding validation is not that device ABI.
+The subsequent [binding layout feature](binding-layout.md) adds a single device
+ABI consumed by CubeCL declarations and launcher registration. The reference
+interpreter remains independent of device execution.

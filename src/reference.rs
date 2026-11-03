@@ -44,6 +44,9 @@ impl<'a> Batch<'a> {
     pub fn row_count(&self) -> usize {
         self.row_count
     }
+    pub(crate) fn column(&self, name: &str) -> Option<ColumnData<'a>> {
+        self.columns.get(name).copied()
+    }
     pub fn with_column(
         mut self,
         name: impl Into<String>,
@@ -98,6 +101,9 @@ pub struct Parameters {
 impl Parameters {
     pub fn new() -> Self {
         Self::default()
+    }
+    pub(crate) fn value(&self, name: &str) -> Option<ScalarValue> {
+        self.values.get(name).copied()
     }
     pub fn with(
         mut self,
