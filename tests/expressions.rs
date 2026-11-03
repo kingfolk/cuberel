@@ -14,48 +14,6 @@ fn schema() -> Schema {
 }
 
 #[test]
-fn composite_expression_rebinds_two_same_type_parameters() {
-    let program = prepare(
-        &(col("a") * param("scale") + col("b") + param("bias")),
-        &schema(),
-    )
-    .unwrap();
-    let a = [1.0, 2.0, -3.0];
-    let b = [10.0, 20.0, 30.0];
-    // Deliberately bind columns and parameters in the opposite order to the schema.
-    let batch = Batch::new(3)
-        .with_column("b", ColumnData::F32(&b))
-        .unwrap()
-        .with_column("a", ColumnData::F32(&a))
-        .unwrap();
-    let first = Parameters::new()
-        .with("bias", 1.0_f32)
-        .unwrap()
-        .with("scale", 2.0_f32)
-        .unwrap();
-    let second = Parameters::new()
-        .with("scale", -1.0_f32)
-        .unwrap()
-        .with("bias", 0.0_f32)
-        .unwrap();
-    assert_eq!(
-        program.evaluate_reference(&batch, &first).unwrap(),
-        [13.0, 25.0, 25.0]
-    );
-    assert_eq!(
-        program.evaluate_reference(&batch, &second).unwrap(),
-        [9.0, 18.0, 33.0]
-    );
-    assert_eq!(program.output_type(), DataType::F32);
-    assert!(
-        program
-            .nodes()
-            .iter()
-            .all(|node| node.data_type() == DataType::F32)
-    );
-}
-
-#[test]
 fn prepared_program_owns_its_data_and_can_cross_threads() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<KernelProgram>();
@@ -64,37 +22,17 @@ fn prepared_program_owns_its_data_and_can_cross_threads() {
         let expr = col("a") * param("scale");
         prepare(&expr, &schema).unwrap()
     };
-    let result = thread::spawn(move || {
-        let a = [3.0, -4.0];
-        let batch = Batch::new(2).with_column("a", ColumnData::F32(&a)).unwrap();
-        let parameters = Parameters::new().with("scale", 2.0_f32).unwrap();
-        program
-            .clone()
-            .evaluate_reference(&batch, &parameters)
-            .unwrap()
-    })
-    .join()
-    .unwrap();
-    assert_eq!(result, [6.0, -8.0]);
-}
-
-#[test]
-fn preserves_parentheses_and_float_evaluation_order() {
-    let schema = schema();
-    let left = prepare(&((col("a") + param("bias")) + col("b")), &schema).unwrap();
-    let right = prepare(&(col("a") + (param("bias") + col("b"))), &schema).unwrap();
-    let a = [16_777_216.0_f32];
-    let b = [-16_777_216.0_f32];
-    let batch = Batch::new(1)
-        .with_column("a", ColumnData::F32(&a))
-        .unwrap()
-        .with_column("b", ColumnData::F32(&b))
+    let cloned = program.clone();
+    let nodes = thread::spawn(move || cloned.nodes().to_vec())
+        .join()
         .unwrap();
-    let parameters = Parameters::new().with("bias", 1.0_f32).unwrap();
-    assert_eq!(left.evaluate_reference(&batch, &parameters).unwrap(), [0.0]);
-    assert_eq!(
-        right.evaluate_reference(&batch, &parameters).unwrap(),
-        [1.0]
+    assert_eq!(program.nodes(), nodes);
+    assert_eq!(program.output_type(), DataType::F32);
+    assert!(
+        program
+            .nodes()
+            .iter()
+            .all(|n| n.data_type() == DataType::F32)
     );
 }
 
@@ -112,125 +50,6 @@ fn named_operands_have_separate_namespaces_and_stable_schema_ids() {
     assert_eq!(parameter_id.index(), 0);
     assert_eq!(program.nodes()[0].op(), ScalarOp::Column(column_id));
     assert_eq!(program.nodes()[1].op(), ScalarOp::Parameter(parameter_id));
-    let a = [3.0];
-    let batch = Batch::new(1).with_column("a", ColumnData::F32(&a)).unwrap();
-    let parameters = Parameters::new().with("a", 7.0_f32).unwrap();
-    assert_eq!(
-        program.evaluate_reference(&batch, &parameters).unwrap(),
-        [10.0]
-    );
-}
-
-#[test]
-fn raw_dag_can_share_an_intermediate() {
-    let expr = Expr::from_nodes(
-        vec![
-            ExprNode::Column("a".into()),
-            ExprNode::Parameter("scale".into()),
-            ExprNode::Mul(ExprId::new(0), ExprId::new(1)),
-            ExprNode::Add(ExprId::new(2), ExprId::new(2)),
-        ],
-        ExprId::new(3),
-    );
-    let program = prepare(&expr, &schema()).unwrap();
-    let a = [2.0, -3.0];
-    let batch = Batch::new(2).with_column("a", ColumnData::F32(&a)).unwrap();
-    let parameters = Parameters::new().with("scale", 4.0_f32).unwrap();
-    assert_eq!(
-        program.evaluate_reference(&batch, &parameters).unwrap(),
-        [16.0, -24.0]
-    );
-}
-
-#[test]
-fn evaluates_parameter_only_program_using_explicit_row_count() {
-    let program = prepare(&(param("scale") * param("scale")), &schema()).unwrap();
-    let parameters = Parameters::new().with("scale", 3.0_f32).unwrap();
-    assert_eq!(
-        program
-            .evaluate_reference(&Batch::new(4), &parameters)
-            .unwrap(),
-        [9.0; 4]
-    );
-}
-
-#[test]
-fn empty_batch_still_validates_inputs() {
-    let program = prepare(&(col("a") + param("bias")), &schema()).unwrap();
-    let batch = Batch::new(0)
-        .with_column("a", ColumnData::F32(&[]))
-        .unwrap();
-    let parameters = Parameters::new().with("bias", 1.0_f32).unwrap();
-    assert_eq!(
-        program.evaluate_reference(&batch, &parameters).unwrap(),
-        Vec::<f32>::new()
-    );
-    assert_eq!(
-        program
-            .evaluate_reference(&batch, &Parameters::new())
-            .unwrap_err(),
-        Error::MissingInput {
-            kind: InputKind::Parameter,
-            name: "bias".into()
-        }
-    );
-}
-
-#[test]
-fn missing_referenced_input_is_an_error_but_unused_fields_are_not_required() {
-    let program = prepare(&col("a"), &schema()).unwrap();
-    assert_eq!(
-        program
-            .evaluate_reference(&Batch::new(1), &Parameters::new())
-            .unwrap_err(),
-        Error::MissingInput {
-            kind: InputKind::Column,
-            name: "a".into()
-        }
-    );
-    let a = [4.0];
-    let batch = Batch::new(1)
-        .with_column("extra", ColumnData::I32(&[7]))
-        .unwrap()
-        .with_column("a", ColumnData::F32(&a))
-        .unwrap();
-    let parameters = Parameters::new().with("extra", 8_i32).unwrap();
-    assert_eq!(
-        program.evaluate_reference(&batch, &parameters).unwrap(),
-        [4.0]
-    );
-}
-
-#[test]
-fn mismatched_column_and_parameter_types_are_rejected() {
-    let column_program = prepare(&col("a"), &schema()).unwrap();
-    let batch = Batch::new(1)
-        .with_column("a", ColumnData::I32(&[7]))
-        .unwrap();
-    assert_eq!(
-        column_program
-            .evaluate_reference(&batch, &Parameters::new())
-            .unwrap_err(),
-        Error::TypeMismatch {
-            kind: InputKind::Column,
-            name: "a".into(),
-            expected: DataType::F32,
-            actual: DataType::I32
-        }
-    );
-    let parameter_program = prepare(&param("scale"), &schema()).unwrap();
-    let parameters = Parameters::new().with("scale", 2_i32).unwrap();
-    assert_eq!(
-        parameter_program
-            .evaluate_reference(&Batch::new(1), &parameters)
-            .unwrap_err(),
-        Error::TypeMismatch {
-            kind: InputKind::Parameter,
-            name: "scale".into(),
-            expected: DataType::F32,
-            actual: DataType::I32
-        }
-    );
 }
 
 #[test]
@@ -487,36 +306,4 @@ fn deeply_nested_raw_input_is_rejected_without_recursive_traversal_or_drop() {
             limit: 64
         }
     );
-}
-
-#[test]
-fn multiple_rows_match_an_independent_arithmetic_formula() {
-    let a: Vec<f32> = (0..257).map(|i| (i as f32 - 128.0) / 8.0).collect();
-    let b: Vec<f32> = (0..257).map(|i| (i % 13) as f32 / 4.0).collect();
-    let program = prepare(
-        &((col("a") * param("scale") + col("b")) * (param("scale") + param("bias"))),
-        &schema(),
-    )
-    .unwrap();
-    let batch = Batch::new(a.len())
-        .with_column("a", ColumnData::F32(&a))
-        .unwrap()
-        .with_column("b", ColumnData::F32(&b))
-        .unwrap();
-    for (scale, bias) in [(1.5_f32, -0.25_f32), (-2.0, 0.5), (0.0, 1.0)] {
-        let parameters = Parameters::new()
-            .with("scale", scale)
-            .unwrap()
-            .with("bias", bias)
-            .unwrap();
-        let expected: Vec<f32> = a
-            .iter()
-            .zip(&b)
-            .map(|(a, b)| (a * scale + b) * (scale + bias))
-            .collect();
-        assert_eq!(
-            program.evaluate_reference(&batch, &parameters).unwrap(),
-            expected
-        );
-    }
 }

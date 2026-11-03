@@ -18,7 +18,7 @@ impl fmt::Display for InputKind {
     }
 }
 
-/// Errors from expression preparation and host reference evaluation.
+/// Errors from expression preparation and named input construction/validation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
     EmptyName {
