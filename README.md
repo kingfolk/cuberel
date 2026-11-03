@@ -6,18 +6,20 @@ The canonical development directory is `/Users/devilhill/Codes/cuberel`.
 Product source, tests, configuration and documentation belong in this repository;
 temporary build directories may live under `/private/tmp`.
 
-The library supports runtime expression construction, schema/type validation,
-and host reference evaluation of non-nullable `f32` addition and multiplication.
-A shared binding layout now drives CubeCL buffer/scalar declarations and argument
-registration, with real CPU and Metal kernel tests. General expression-to-IR
-lowering, SQL and Arrow integration are not yet implemented.
+The library builds and validates runtime expressions, lowers non-nullable `f32`
+addition and multiplication to CubeCL IR, and executes on a selected CPU or native
+Metal client. No `#[cube]`, Rust source generation or runtime rustc invocation is
+used by this query path. SQL and Arrow integration are not yet implemented.
 The backend smoke example separately initializes a real device and round-trips
 a buffer; it does **not** compile or launch a compute kernel.
 
-## Expressions and host reference evaluation
+## Runtime expression execution
 
 ```rust
-use cuberel::{Batch, ColumnData, DataType, Parameters, Schema, col, param, prepare};
+use cubecl::Device;
+use cuberel::{Batch, ColumnData, DataType, Executor, Parameters, Schema, col, param, prepare};
+
+let executor = Executor::new(Device::cpu()?.client())?;
 
 let schema = Schema::new(
     &[("a", DataType::F32), ("b", DataType::F32)],
@@ -33,21 +35,26 @@ let batch = Batch::new(a.len())
 let parameters = Parameters::new()
     .with("scale", 2.0_f32)?
     .with("bias", 1.0_f32)?;
-let result = program.evaluate_reference(&batch, &parameters)?;
+let result = executor.execute(&program, &batch, &parameters)?;
 assert_eq!(result, [13.0, 25.0, 37.0]);
 ```
 
-A prepared program can be evaluated again with new named parameters or columns.
-`evaluate_reference` is an independent host interpreter, not a CubeCL CPU kernel,
-and does not initialize a device. It works with no runtime feature enabled:
+A prepared program can execute again with new named parameters or columns. Backend
+selection is explicit; execution checks the output read before returning a result.
+Empty batches validate inputs but allocate and launch nothing. The temporary host
+interpreter has been removed; numerical tests assert independent expected results.
 
 ```sh
-cargo run --locked --no-default-features --example reference_expr
+cargo run --locked --example runtime_expr -- cpu
+cargo run --locked --no-default-features --features metal --example runtime_expr -- metal
+cargo test --locked --features metal --test runtime_expr
+# Frontend construction/validation still works without a linked runtime.
 cargo test --locked --no-default-features --test expressions
 ```
 
 See [the expression API and semantics](docs/typed-expressions.md) for preparation
-limits, error handling, raw node graphs and the boundaries of this feature.
+limits and raw node graphs. See [device execution and its limits](docs/runtime-emitter.md)
+for IR construction, floating-point policy and the verification report.
 
 ## Kernel binding ABI
 
@@ -67,7 +74,7 @@ cargo test --locked --features metal --test binding_device
 
 See [the binding ABI and validation report](docs/binding-layout.md). Its device
 tests build a small probe kernel directly with CubeCL IR APIs, without `#[cube]`.
-They verify argument transport; the general query emitter is the next work item.
+They verify argument transport separately from the query emitter in `Executor`.
 
 ## Dependency baseline
 

@@ -125,7 +125,7 @@ pub enum ScalarOp {
     Mul(ExprId, ExprId),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TypedExpr {
     op: ScalarOp,
     data_type: DataType,

@@ -2,8 +2,9 @@
 
 Milestone 01 work item 3 provides a versioned ABI shared by IR declarations and
 runtime argument registration. It is product code for the later query emitter.
-The device tests use a manually written IR probe; automatic expression lowering
-and query compilation identity remain work items 4 and 5.
+The device tests use a manually written IR probe. Automatic expression lowering
+is now provided by [the executor](runtime-emitter.md); broader compilation
+identity and cache instrumentation remain work item 5.
 
 ## Layout and host binding
 
@@ -58,8 +59,8 @@ populated launcher. A guard discards launcher state if registration unwinds.
 Launch is unsafe because an arbitrary `CubeKernel` body must obey the supplied
 layout, settings, bounds and synchronization rules. The adapter checks kernel
 metadata address width, cube dimensions and execution mode, but metadata cannot
-prove a kernel body accesses memory correctly. A future trusted emitter can wrap
-this boundary in a safe query execution API. Do not interleave third-party
+prove a kernel body accesses memory correctly. `Executor` wraps this boundary
+with the private trusted expression emitter. Do not interleave third-party
 launcher registration on the same thread.
 
 `Submission::Enqueued` means submission, not successful execution. The caller
@@ -79,7 +80,7 @@ memory. The device binding path also applies these checks:
 - Output does not share an allocation with any input, including disjoint views.
   Read-only inputs may alias each other.
 - Required named scalars exist and have the expected type. Extra bindings are
-  permitted, as with the reference interpreter.
+  permitted, as with host input binding.
 
 Extra allocation capacity is allowed, but each registered handle is narrowed to
 exactly the logical byte length. In the pinned CubeCL revision, launcher metadata
@@ -91,15 +92,16 @@ in-place output are outside ABI version 1.
 
 ## Verification
 
-Verified on 2026-11-01 using the pinned CubeCL revision and toolchain documented
-in `build-baseline.md`. The combined CPU/native Metal suite passes 35 integration
-tests: 20 expression, 10 layout, 3 ABI device and 2 backend buffer tests. No tests
-are ignored. Both ABI device probes execute real kernels and read results.
+At this work item's completion on 2026-11-01, the combined suite passed 35 tests.
+After temporary-interpreter removal, the current suite has 29 integration tests:
+12 frontend, 10 layout, 3 ABI device, 2 backend buffer and 2 expression-device
+conformance tests. The ABI probes still execute real CPU and native Metal kernels
+and read results. See `runtime-emitter.md` for the current validation matrix.
 
 The probes deliberately use schema order different from expression and supplied
 argument order, two distinct F32 parameters, offset input views, spare allocation
 capacity, and non-divisible row counts with guarded tail threads. They compare
-results against the independent reference formula and independently read IR
+results against a use-case-specific arithmetic formula and independently read IR
 buffer-length metadata and the physical U32 count. They verify that output
 padding stays untouched, parameters can be rebound, invalid bindings precede a
 successful launch, empty invocations do not define a kernel, and a CPU handle
@@ -107,8 +109,8 @@ cannot be bound to a Metal client.
 
 The pure tests cover canonical order, deduplication, parameter-only expressions,
 namespace collisions, binding errors, length/capacity/alignment/range overflow,
-empty batches, U32 limits and unsupported U64. These are ABI tests, not evidence
-that the general expression emitter or query compilation cache is complete.
+empty batches, U32 limits and unsupported U64. These tests specifically verify ABI
+transport; expression execution is tested separately in `tests/runtime_expr.rs`.
 
 ```sh
 cargo test --locked --no-default-features

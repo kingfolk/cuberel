@@ -1,120 +1,84 @@
-# Typed expressions and host reference evaluation
+# Typed expressions and preparation
 
-This implements milestone 01's second work item. It provides product expression
-and preparation APIs plus a host reference evaluator for later differential
-testing of device kernels. It does not emit CubeCL IR, define a kernel ABI, or
-launch a query on a device.
+Milestone 01 work item 2 introduced runtime expression construction and preparation.
+Work item 4 adds [device execution](runtime-emitter.md) and removes the temporary
+host evaluator. This document describes the retained frontend and input APIs.
 
 ## Public workflow
 
-1. `Schema::new(columns, parameters)` declares two separate name/type namespaces.
+1. `Schema::new(columns, parameters)` declares separate name/type namespaces.
 2. `col("a") * param("scale") + col("b")` builds an owned expression graph.
 3. `prepare(&expression, &schema)` checks the graph and binds names to typed IDs.
 4. `Batch::new(row_count).with_column(...)` supplies borrowed host columns.
 5. `Parameters::new().with(...)` supplies named scalars.
-6. `program.evaluate_reference(&batch, &parameters)` returns `Result<Vec<f32>, Error>`.
+6. `executor.execute(&program, &batch, &parameters)` runs a real device kernel.
 
-See `examples/reference_expr.rs` for a runnable example that reuses a prepared
-program with two different parameter sets. No device feature is needed to run it.
-
-The program owns its schema and expression data via immutable `Arc`s; it can
-outlive the input expression/schema, be cheaply cloned, and be shared across
-threads. No CubeCL `Scope`, pliron `Value`, buffer handle or device client is
-stored in the program.
+See `examples/runtime_expr.rs` for selected CPU/Metal execution and parameter
+rebinding. Frontend preparation and host binding work with no runtime feature.
+The prepared program owns schema and expression data through immutable Arcs. It
+can outlive its source expression/schema, be cheaply cloned and shared across
+threads. It stores no CubeCL Scope, pliron Value, device handle or client.
 
 ## Types and names
 
-`ColumnId` and `ParameterId` are positions within a program's schema, not globally
-unique handles. `ExprId` is local to an expression/program arena. IDs from two
-programs should not be interpreted as the same binding merely because their
-numeric indexes match.
+ColumnId and ParameterId are positions within a program's schema, not globally
+unique handles. ExprId is local to an expression/program arena. IDs from different
+programs do not identify the same binding merely because their indexes match.
 
-Only non-nullable `f32` arithmetic is implemented. `DataType::I32`,
-`ColumnData::I32` and `ScalarValue::I32` can describe unsupported or mismatched
-inputs so callers receive structured errors. They do not enable integer
-arithmetic. Used I32 declarations fail during preparation; I32 data supplied for
-an F32 declaration fails before reference output is evaluated. No implicit casts
-are performed. Give float parameters an explicit `f32` suffix.
+Only non-nullable F32 arithmetic is implemented. DataType::I32, ColumnData::I32
+and ScalarValue::I32 describe unsupported/mismatched input and produce structured
+errors; they do not enable integer arithmetic. Used I32 declarations fail at
+preparation, and I32 data for an F32 declaration fails before device upload.
+There are no implicit casts; give float parameters an explicit `f32` suffix.
 
-Columns and parameters may have the same name because they are different
-namespaces. Within a namespace, empty and duplicate names are rejected. Names
-are exact and case-sensitive. Names are resolved during prepare; evaluation
-does not look up column/parameter names once per row. Binding order is irrelevant.
-Unused schema fields and extra supplied inputs are permitted. Every supplied
-batch column must still have the declared batch row count.
+Columns and parameters may have the same name. Empty or duplicate names within
+a namespace are rejected; names are exact and case-sensitive. Name resolution
+happens during preparation and binding, not once per device row. Input insertion
+order is irrelevant. Unused schema fields and extra supplied inputs are permitted.
+Every supplied batch column must still match the explicit row count.
 
 ## Graph validation and bounds
 
-Expressions use a flat arena, not recursively owned boxed nodes. Preparation,
-evaluation and drop do not recurse through the graph. `+` and `*` merge arenas
-and rebase the right operand's expression IDs. They preserve parentheses and do
-not perform CSE, reassociation or compilation.
+Expressions use a flat arena instead of recursively owned boxes. Preparation and
+drop do not recurse through the graph. `+` and `*` merge arenas and rebase the
+right operand's IDs. Construction preserves parentheses and does not do CSE,
+reassociation or device compilation.
 
-`Expr::from_nodes(nodes, root)` is a raw frontend entry point. Before the graph
-becomes a `KernelProgram`, prepare rejects:
+`Expr::from_nodes(nodes, root)` is a raw frontend entry point. Preparation checks
+all nodes, including ones unreachable from the root, rejecting:
 
-- Empty arenas and root indexes outside the arena.
-- Out-of-range, forward and self references; operands must precede their parent.
-  This topological-order requirement also rejects cycles.
-- Unknown column or parameter names.
-- Unsupported used input types.
-- Expressions larger or deeper than the configured bounds.
-
-All arena nodes are checked, including nodes unreachable from the root. Reference
-evaluation likewise validates inputs for every node. Raw frontends should supply
-a pruned arena when they want unused graph inputs removed.
+- Empty arenas or an out-of-range root.
+- Out-of-range, forward or self references; operands must precede their parent,
+  which also rejects cycles.
+- Unknown names or unsupported used types.
+- Expressions exceeding the size or depth limits.
 
 Defaults are 4096 nodes and depth 128. A leaf has depth one; bounds are inclusive.
-Use `prepare_with_limits` and `PrepareLimits` to change them. Node count is
-checked before allocating the prepared arena. These limits constrain preparation,
-not memory already allocated by a caller while constructing a source expression,
-and do not constitute an output-memory budget.
+Use PrepareLimits and prepare_with_limits to change them. Node count is checked
+before allocating the prepared arena. This is not a budget for memory already
+allocated while constructing an expression or for device output memory.
 
-## Reference semantics
+The binding layout also includes input references from unreachable nodes. Raw
+frontends should supply a pruned arena when they want dead inputs removed. Shared
+DAG references are valid; the emitter reuses their SSA values. A root may precede
+other nodes.
 
-For each row, the host interpreter evaluates validated nodes in arena order and
-returns the root value. It uses one reusable scratch vector; intermediate columns
-are not materialized. Runtime is proportional to rows times node count, and
-scratch space is proportional to node count, in addition to output and binding
-storage. This is a correctness reference, not an optimized CPU query engine.
+## Execution semantics and validation
 
-A batch has an explicit row count. Parameter-only programs broadcast over this
-count, and zero rows produce an empty result. Missing/type-invalid inputs still
-fail for a zero-row batch: empty output cannot hide a binding error.
+Parameter-only programs broadcast over the batch row count. Zero rows still
+validate required inputs, then produce empty output without allocation or launch.
+The original arithmetic grouping is retained. See `runtime-emitter.md` for the
+strict rounding workaround required by the pinned CubeCL optimizer and numerical
+limits; SQL NULL, NaN ordering and general bitwise identity are not defined here.
 
-Arithmetic uses Rust `f32` addition and multiplication with the expression's
-original grouping. No explicit `mul_add` or algebraic reassociation is used.
-SQL NULL, NaN ordering, overflow policy and cross-device bitwise equivalence are
-not defined here. Nonfinite inputs/results are not separately rejected by this
-host evaluator; they follow the underlying Rust floating-point operations.
-
-## Verification
-
-The integration suite covers parameter rebinding, input order, separate name
-namespaces, shared DAG operands, empty/parameter-only batches, missing/type-invalid
-bindings, length mismatches, source ownership/Send/Sync, malformed graphs,
-inclusive limits, a 10,000-node over-depth input, and numerical grouping that
-distinguishes reassociated float expressions. A multi-row case compares results
-with a separately written arithmetic formula.
+Twelve frontend tests cover names, types, ownership/Send/Sync, malformed arenas,
+raw composition, unreachable nodes, inclusive bounds and a 10,000-node deep graph.
+Ten separate layout tests exercise binding and address checks. Numerical cases
+run real CPU/Metal kernels and assert explicit expected results rather than
+maintaining a second AST execution engine.
 
 ```sh
 cargo test --locked --no-default-features --test expressions
-cargo run --locked --no-default-features --example reference_expr
+cargo test --locked --no-default-features --test binding_layout
+cargo test --locked --features metal --test runtime_expr
 ```
-
-On 2026-11-01, all 20 expression integration tests passed both without any runtime
-feature and in the combined CPU/Metal build. The existing 2 device buffer tests
-also passed in the combined build. The reference example produced:
-
-```text
-host reference, scale=2: [13.0, 25.0, 37.0]
-host reference, scale=-1: [10.0, 19.0, 28.0]
-```
-
-Clippy with all features/targets and `-D warnings`, and rustdoc without runtime
-features and with `-D warnings`, passed using the toolchain and temporary target
-directory documented in the build baseline.
-
-The subsequent [binding layout feature](binding-layout.md) adds a single device
-ABI consumed by CubeCL declarations and launcher registration. The reference
-interpreter remains independent of device execution.

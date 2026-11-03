@@ -22,7 +22,7 @@ use cubecl::{
 };
 
 use cuberel::{
-    Batch, ColumnData, ColumnId, DataType, KernelProgram, ParameterId, Parameters, Schema,
+    ColumnId, DataType, KernelProgram, ParameterId, Parameters, Schema,
     abi::{BindingError, BindingLayout, PhysicalType},
     col,
     cubecl_abi::{DeviceBuffer, Submission},
@@ -263,11 +263,6 @@ fn exercise_abi(device: Device) {
         Err(BindingError::SettingsMismatch { .. })
     ));
 
-    let batch = Batch::new(5)
-        .with_column("a", ColumnData::F32(&a))
-        .unwrap()
-        .with_column("b", ColumnData::F32(&b))
-        .unwrap();
     for (scale, bias) in [(2.0_f32, 7.0_f32), (-1.0, 3.0)] {
         let parameters = Parameters::new()
             .with("scale", scale)
@@ -292,11 +287,10 @@ fn exercise_abi(device: Device) {
             .iter()
             .map(|chunk| f32::from_ne_bytes(*chunk))
             .collect();
-        let expected: Vec<f32> = program
-            .evaluate_reference(&batch, &parameters)
-            .unwrap()
-            .into_iter()
-            .map(|value| value + rows as f32 + rows as f32)
+        let expected: Vec<f32> = a
+            .iter()
+            .zip(&b)
+            .map(|(a, b)| a * scale + b + bias + rows as f32 + rows as f32)
             .collect();
         assert_eq!(&actual[..5], expected.as_slice());
         assert_eq!(&actual[5..], &[-999.0, -999.0]);

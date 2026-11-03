@@ -100,6 +100,7 @@ substitute for diagnosing future failures on other systems.
 At the time of this build-baseline work item, typed expressions/reference
 evaluation, binding ABI, runtime CubeCL IR emission, query execution, kernel cache
 identity and kernel failure propagation were unimplemented. The subsequent
-[typed-expression work item](typed-expressions.md) adds expression preparation
-and host reference evaluation. No SQL, Arrow data processing, JIT query
+[typed-expression work item](typed-expressions.md) adds expression preparation;
+[runtime emission](runtime-emitter.md) subsequently adds device query execution
+and removes the temporary host interpreter. No SQL, Arrow data processing, JIT query
 correctness or performance claim follows from the build and transfer checks here.
