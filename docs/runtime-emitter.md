@@ -3,7 +3,9 @@
 Milestone 01 work item 4 compiles a prepared expression to CubeCL IR and executes
 it on a selected client. `Executor::execute(program, batch, parameters)` is a safe,
 synchronous API returning `Result<Vec<f32>, ExecutionError>`. It supports column
-and scalar leaves, addition and multiplication of non-nullable scalar F32 values.
+and scalar leaves, addition and multiplication of scalar F32 values.
+[Nullable F32 projection](nullable-projection.md) now uses explicit value/validity
+planes and `Executor::execute_nullable` for nullable roots.
 [Predicate execution](predicates.md) now adds F32 comparisons and boolean
 composition through `Executor::execute_mask`, returning dense U32 flags.
 No Rust source or `#[cube]` kernel is generated, and query execution does not call
@@ -76,8 +78,9 @@ reliable strict floating-point policy. Its performance has not been benchmarked.
 
 Finite normal arithmetic is the tested contract. Non-exact finite cases use
 `abs_error <= 1e-6 + 1e-5 * abs(expected)`; binary-exact fixtures use exact asserts.
-SQL NULL, NaN ordering, overflow rules, denormal handling and general cross-device
-bitwise identity are not defined by this feature.
+Nullable add/mul semantics are defined by [nullable projection](nullable-projection.md),
+and comparison edges by [predicates](predicates.md). Overflow rules, denormal
+handling and general cross-device bitwise identity remain outside this feature.
 
 ## Identity and remaining work
 

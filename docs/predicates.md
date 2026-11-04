@@ -34,8 +34,8 @@ including unreachable ones, are checked for valid references and operand types.
 Type errors report the consuming node, operand ID, expected type and actual type.
 Unary nodes participate in preparation depth/node bounds and malformed-root checks.
 
-Columns and scalar parameters remain non-nullable F32. Bool is currently an
-expression result type; a referenced Bool input declaration is explicitly
+Comparison operands must remain non-nullable F32; nullable comparisons are
+rejected. Bool is currently an expression result type; a referenced Bool input declaration is explicitly
 unsupported. There are no implicit numeric/bool conversions or bool comparisons.
 Boolean composition evaluates its operands eagerly. All current operations are
 pure and safe to evaluate on every in-range row; this does not establish an
@@ -57,8 +57,10 @@ The root type controls the output declaration, imported device-buffer type,
 readback interpretation and validation. All loads, operations and stores remain
 inside the logical row-count guard. Complete IR is verified before build.
 
-Binding ABI version 2 records each buffer's physical type: inputs are F32,
-arithmetic output is F32 and predicate output is U32. All currently supported
+Binding ABI version 3 (extended by [nullable projection](nullable-projection.md))
+records each buffer's physical type. Predicate operands use F32 value inputs;
+nullable F32 projections add U32 validity planes. Arithmetic output is F32 and
+predicate output is U32. All currently supported
 slots are four bytes per row, so existing extent/alignment/U32 byte-end checks
 remain applicable. Buffer validation rejects an F32 allocation descriptor for
 a predicate's U32 output, even though their byte sizes match.
@@ -69,7 +71,8 @@ wrong result types before allocation/launch; empty batches still validate all
 required inputs. Readback uses the same checked completion path, then validates
 mask values are 0/1. It does not reinterpret arbitrary bytes as Rust bools.
 
-Codegen version is now 4. Identity includes comparison kind, boolean operations,
+Codegen version is now 5 after nullable projection support. Identity includes
+comparison kind, boolean operations,
 typed nodes, remapped operands/root and the updated physical layout. Duplicate
 pure predicate nodes normalize with the existing structural interning. Parameter
 values, row counts and buffer addresses remain outside the key. CPU/Metal reuse
@@ -78,7 +81,8 @@ reuses the artifact after parameters, input addresses and row counts change.
 
 ## Scope and verification
 
-This produces a non-nullable dense mask. NULL validity, SQL three-valued logic,
+This produces a non-nullable dense mask. F32 projection validity is implemented
+separately; nullable predicates, SQL three-valued logic,
 `IS NULL`, Arrow arrays/offsets, integer expressions, row compaction and relation
 operators remain later features. No host expression interpreter is introduced.
 

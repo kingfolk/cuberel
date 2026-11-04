@@ -2,23 +2,29 @@ use std::collections::BTreeMap;
 
 use crate::{DataType, Error, InputKind};
 
-/// Borrowed non-nullable host columns; this is not an Arrow or device buffer.
+/// Borrowed initialized host columns; this is not an Arrow or device buffer.
 #[derive(Clone, Copy, Debug)]
 pub enum ColumnData<'a> {
     F32(&'a [f32]),
+    /// Dense 0/1 validity, one initialized payload per row (including NULLs).
+    NullableF32 {
+        values: &'a [f32],
+        validity: &'a [u32],
+    },
     I32(&'a [i32]),
 }
 
 impl ColumnData<'_> {
     pub fn data_type(self) -> DataType {
         match self {
-            Self::F32(_) => DataType::F32,
+            Self::F32(_) | Self::NullableF32 { .. } => DataType::F32,
             Self::I32(_) => DataType::I32,
         }
     }
     pub fn len(self) -> usize {
         match self {
             Self::F32(v) => v.len(),
+            Self::NullableF32 { values, .. } => values.len(),
             Self::I32(v) => v.len(),
         }
     }
@@ -61,6 +67,20 @@ impl<'a> Batch<'a> {
                 actual: data.len(),
             });
         }
+        if let ColumnData::NullableF32 { values, validity } = data {
+            if validity.len() != values.len() {
+                return Err(Error::ValidityLengthMismatch {
+                    name,
+                    expected: values.len(),
+                    actual: validity.len(),
+                });
+            }
+            if let Some((index, &value)) =
+                validity.iter().enumerate().find(|(_, value)| **value > 1)
+            {
+                return Err(Error::InvalidValidity { name, index, value });
+            }
+        }
         self.columns.insert(name, data);
         Ok(self)
     }
@@ -69,13 +89,14 @@ impl<'a> Batch<'a> {
 #[derive(Clone, Copy, Debug)]
 pub enum ScalarValue {
     F32(f32),
+    NullableF32(Option<f32>),
     I32(i32),
 }
 
 impl ScalarValue {
     pub fn data_type(self) -> DataType {
         match self {
-            Self::F32(_) => DataType::F32,
+            Self::F32(_) | Self::NullableF32(_) => DataType::F32,
             Self::I32(_) => DataType::I32,
         }
     }
@@ -84,6 +105,11 @@ impl ScalarValue {
 impl From<f32> for ScalarValue {
     fn from(value: f32) -> Self {
         Self::F32(value)
+    }
+}
+impl From<Option<f32>> for ScalarValue {
+    fn from(value: Option<f32>) -> Self {
+        Self::NullableF32(value)
     }
 }
 impl From<i32> for ScalarValue {

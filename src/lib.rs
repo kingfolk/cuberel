@@ -3,7 +3,8 @@
 //! Build expressions with [`col`] and [`param`], bind them with [`prepare`], and
 //! execute them on a selected CubeCL client with [`Executor::execute`].
 //! Expressions lower directly to IR at runtime, without generating Rust source.
-//! Supports non-nullable `f32` arithmetic and boolean predicates; use
+//! Supports nullable `f32` arithmetic and non-nullable boolean predicates; use
+//! [`Executor::execute_nullable`] for value/validity projection output and
 //! [`Executor::execute_mask`] for dense 0/1 predicate output.
 //!
 //! Backend features:
@@ -25,7 +26,7 @@ mod schema;
 
 pub use emitter::{CODEGEN_VERSION, ExpressionIdentity};
 pub use error::{Error, InputKind};
-pub use executor::{ExecutionError, Executor};
+pub use executor::{ExecutionError, Executor, NullableF32};
 pub use expr::{
     Comparison, Expr, ExprId, ExprNode, KernelProgram, PrepareLimits, ScalarOp, TypedExpr, col,
     param, prepare, prepare_with_limits,
