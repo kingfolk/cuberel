@@ -22,6 +22,7 @@ mod expr;
 mod input;
 mod schema;
 
+pub use emitter::{CODEGEN_VERSION, ExpressionIdentity};
 pub use error::{Error, InputKind};
 pub use executor::{ExecutionError, Executor};
 pub use expr::{

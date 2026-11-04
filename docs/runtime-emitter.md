@@ -86,10 +86,9 @@ also includes dimensions, address type and execution mode. Input handles, row
 count and parameter values are arguments, not specialization constants.
 
 This uses CubeCL's existing compilation cache and does not add a Cuberel cache.
-Identity normalization, complete target-specialization policy, define/compile
-instrumentation, cache reuse assertions and isolated illegal-IR failure tests
-remain milestone work item 5. Correct repeated outputs alone are not a cache-hit
-measurement. The milestone as a whole remains incomplete.
+Work item 5 now provides [normalized identity, scoped define observation and
+isolated failure tests](kernel-identity.md). Correct repeated outputs alone are
+not a cache-hit measurement; define counts do not count driver compilations.
 
 ## Temporary interpreter removal
 
@@ -105,9 +104,9 @@ ABI probe also uses a direct formula. No generic AST interpreter remains in test
 Verified 2026-11-01 on macOS/arm64, Rust/Cargo 1.99.0, using the unchanged pinned
 CubeCL `5037c0639ce3b1205392bdbe43dcf25e2ea09e29`. The local CubeCL checkout was clean;
 the Cargo dependency remains a fixed git revision, without a local path override.
-Cuberel changes are local and uncommitted on `feat/runtime-emitter`.
+This work item was subsequently merged in PR #4 (implementation commit 3b084a4).
 
-The combined suite has 29 tests: 12 frontend, 10 layout, 3 ABI-device, 2 backend
+At work item 4 completion, the combined suite had 29 tests: 12 frontend, 10 layout, 3 ABI-device, 2 backend
 buffer and 2 runtime-expression conformance tests. Each conformance test checks
 many expression shapes, parameter sets and lengths, including 0, 1, B-1, B, B+1,
 3B, 3B+7 and 4099 rows. Cases cover schema/binding order differences, two F32

@@ -76,6 +76,21 @@ See [the binding ABI and validation report](docs/binding-layout.md). Its device
 tests build a small probe kernel directly with CubeCL IR APIs, without `#[cube]`.
 They verify argument transport separately from the query emitter in `Executor`.
 
+## Kernel identity and reuse
+
+`executor.kernel_identity(&program)` exposes the normalized typed structure,
+binding ABI, codegen policy, settings and target description;
+`executor.kernel_id(&program)` returns the actual CubeCL cache identity.
+Parameters, row counts and buffer addresses do not specialize the key. Repeated
+pure nodes and shared DAG references normalize to the same structure, while
+operand order and floating-point grouping remain significant.
+
+`executor.define_count()` counts IR definition attempts submitted by that executor
+and its clones. It does not count driver compilations or disk-cache hits. Tests
+verify real CPU/Metal reuse and that definition/compiler failures are reported
+when reading output, followed by successful valid execution on the same client.
+See [identity, observation and failure guarantees](docs/kernel-identity.md).
+
 ## Dependency baseline
 
 - Rust edition 2024; declared minimum Rust version: 1.95 (not yet tested at the minimum).
