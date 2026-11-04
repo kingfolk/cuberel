@@ -8,12 +8,15 @@ use std::{
 
 use cubecl::{
     ir::{
-        Builtin, FloatKind, OpInserter,
+        Builtin, FloatKind, OpInserter, UIntKind,
         attributes::FloatAttr,
         dialect::{
             branch::{IfOp, ReturnOp},
-            cmp::ULessThanOp,
-            general::ReadBuiltinOp,
+            cmp::{
+                FEqualOp, FGreaterThanOp, FGreaterThanOrEqualOp, FLessThanOp, FLessThanOrEqualOp,
+                FNotEqualOp, ULessThanOp,
+            },
+            general::{BoolAndOp, BoolNotOp, BoolOrOp, CastOp, ReadBuiltinOp},
             math::{FMulOp, FmaOp},
             memory::{IndexOp, LoadOp, StoreOp},
         },
@@ -24,10 +27,10 @@ use cubecl::{
     },
 };
 
-use crate::{ExprId, KernelProgram, ScalarOp, TypedExpr, abi::BindingLayout};
+use crate::{Comparison, DataType, ExprId, KernelProgram, ScalarOp, TypedExpr, abi::BindingLayout};
 
 // Change when emitted semantics or instruction policy changes.
-pub const CODEGEN_VERSION: u32 = 3;
+pub const CODEGEN_VERSION: u32 = 4;
 
 /// Structural identity for compilation and caching of an expression kernel.
 /// Dynamic values, handles, and row counts are absent.
@@ -77,6 +80,12 @@ impl ExpressionKernel {
             let op = match node.op() {
                 ScalarOp::Add(a, b) => ScalarOp::Add(remapped[a.index()], remapped[b.index()]),
                 ScalarOp::Mul(a, b) => ScalarOp::Mul(remapped[a.index()], remapped[b.index()]),
+                ScalarOp::Compare(op, a, b) => {
+                    ScalarOp::Compare(op, remapped[a.index()], remapped[b.index()])
+                }
+                ScalarOp::And(a, b) => ScalarOp::And(remapped[a.index()], remapped[b.index()]),
+                ScalarOp::Or(a, b) => ScalarOp::Or(remapped[a.index()], remapped[b.index()]),
+                ScalarOp::Not(a) => ScalarOp::Not(remapped[a.index()]),
                 leaf => leaf,
             };
             let canonical = node.with_op(op);
@@ -177,6 +186,41 @@ impl CubeKernel for ExpressionKernel {
                     values[a.index()],
                     values[b.index()],
                 )),
+                ScalarOp::Compare(comparison, a, b) => {
+                    let (a, b) = (values[a.index()], values[b.index()]);
+                    match comparison {
+                        Comparison::Equal => {
+                            body.register_with_result(&FEqualOp::new(body.ctx_mut(), a, b))
+                        }
+                        Comparison::NotEqual => {
+                            body.register_with_result(&FNotEqualOp::new(body.ctx_mut(), a, b))
+                        }
+                        Comparison::LessThan => {
+                            body.register_with_result(&FLessThanOp::new(body.ctx_mut(), a, b))
+                        }
+                        Comparison::LessThanOrEqual => body
+                            .register_with_result(&FLessThanOrEqualOp::new(body.ctx_mut(), a, b)),
+                        Comparison::GreaterThan => {
+                            body.register_with_result(&FGreaterThanOp::new(body.ctx_mut(), a, b))
+                        }
+                        Comparison::GreaterThanOrEqual => body.register_with_result(
+                            &FGreaterThanOrEqualOp::new(body.ctx_mut(), a, b),
+                        ),
+                    }
+                }
+                ScalarOp::And(a, b) => body.register_with_result(&BoolAndOp::new(
+                    body.ctx_mut(),
+                    values[a.index()],
+                    values[b.index()],
+                )),
+                ScalarOp::Or(a, b) => body.register_with_result(&BoolOrOp::new(
+                    body.ctx_mut(),
+                    values[a.index()],
+                    values[b.index()],
+                )),
+                ScalarOp::Not(a) => {
+                    body.register_with_result(&BoolNotOp::new(body.ctx_mut(), values[a.index()]))
+                }
             };
             values.push(value);
         }
@@ -186,11 +230,16 @@ impl CubeKernel for ExpressionKernel {
             index,
             true,
         ));
-        body.register(&StoreOp::new(
-            body.ctx_mut(),
-            ptr,
-            values[self.program.root().index()],
-        ));
+        let result = values[self.program.root().index()];
+        // Device booleans stay in SSA. The portable buffer ABI stores 0/1 U32,
+        // avoiding backend-dependent bool sizes and host bool bit patterns.
+        let result = if self.program.output_type() == DataType::Bool {
+            let ty = ElemType::UInt(UIntKind::U32).to_type(body.ctx());
+            body.register_with_result(&CastOp::new(body.ctx_mut(), ty, result))
+        } else {
+            result
+        };
+        body.register(&StoreOp::new(body.ctx_mut(), ptr, result));
         body.terminate_yield();
         let other =
             scope.branch_child(OpInserter::new_at_block_end(branch.else_block(scope.ctx())));

@@ -7,7 +7,7 @@ Product source, tests, configuration and documentation belong in this repository
 temporary build directories may live under `/private/tmp`.
 
 The library builds and validates runtime expressions, lowers non-nullable `f32`
-addition and multiplication to CubeCL IR, and executes on a selected CPU or native
+arithmetic and boolean predicates to CubeCL IR, and executes on a selected CPU or native
 Metal client. No `#[cube]`, Rust source generation or runtime rustc invocation is
 used by this query path. SQL and Arrow integration are not yet implemented.
 The backend smoke example separately initializes a real device and round-trips
@@ -55,6 +55,22 @@ cargo test --locked --no-default-features --test expressions
 See [the expression API and semantics](docs/typed-expressions.md) for preparation
 limits and raw node graphs. See [device execution and its limits](docs/runtime-emitter.md)
 for IR construction, floating-point policy and the verification report.
+
+## Predicate masks
+
+Compare F32 expressions with `eq_expr`, `ne_expr`, `lt`, `le`, `gt`, `ge`;
+compose predicates with `and`, `or` and `!`. Execute a Bool program with
+`executor.execute_mask(&program, &batch, &parameters)` to obtain one U32 flag
+per input row (0 or 1), retaining row positions. F32 programs use `execute`.
+
+For `(a * scale) > limit AND a < upper`, input `[1, 3, 5]` with parameters
+`scale=2`, `limit=4`, `upper=5` produces `[0, 1, 0]`. See
+[predicate types, semantics and ABI](docs/predicates.md).
+
+```sh
+cargo run --locked --example predicate_mask -- cpu
+cargo run --locked --no-default-features --features metal --example predicate_mask -- metal
+```
 
 ## Kernel binding ABI
 
@@ -169,7 +185,7 @@ allows GPU access; do not replace them with a CPU fallback or a passing skip.
 
 ## Local planning documents
 
-`DESIGN.md`, `MILESTONE-01.md` and `AGENTS.md` are local planning documents and
-agent instructions intentionally excluded by exact `.gitignore` entries.
+`DESIGN.md`, `MILESTONE-01.md`, `MILESTONE-02.md`, `TODO.md` and `AGENTS.md` are local
+planning documents and agent instructions intentionally excluded by exact `.gitignore` entries.
 Product source, tests, this README and
 `Cargo.lock` remain eligible for version control.

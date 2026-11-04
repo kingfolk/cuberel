@@ -1,4 +1,4 @@
-//! Synchronous execution of prepared F32 programs on a selected CubeCL client.
+//! Synchronous execution of prepared arithmetic and predicate programs on a selected CubeCL client.
 
 use std::{
     error::Error as StdError,
@@ -10,6 +10,7 @@ use std::{
 };
 
 use cubecl::{
+    bytes::Bytes,
     prelude::{
         AddressType, Client, CubeCount, CubeDim, ExecutionMode, KernelId, KernelMetadata,
         KernelSettings,
@@ -18,7 +19,7 @@ use cubecl::{
 };
 
 use crate::{
-    Batch, KernelProgram, Parameters,
+    Batch, DataType, KernelProgram, Parameters,
     abi::{BindingError, BindingLayout, PhysicalType},
     cubecl_abi::DeviceBuffer,
     emitter::{ExpressionIdentity, ExpressionKernel},
@@ -112,11 +113,65 @@ impl Executor {
         batch: &Batch<'_>,
         parameters: &Parameters,
     ) -> Result<Vec<f32>, ExecutionError> {
+        self.require_output_type(program, DataType::F32)?;
+        let bytes = self.execute_bytes(program, batch, parameters)?;
+        Ok(bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| f32::from_ne_bytes(*b))
+            .collect())
+    }
+
+    /// Execute a non-nullable predicate as a dense row-aligned mask.
+    /// Every entry is exactly 0 (false) or 1 (true); rows are not compacted.
+    pub fn execute_mask(
+        &self,
+        program: &KernelProgram,
+        batch: &Batch<'_>,
+        parameters: &Parameters,
+    ) -> Result<Vec<u32>, ExecutionError> {
+        self.require_output_type(program, DataType::Bool)?;
+        let bytes = self.execute_bytes(program, batch, parameters)?;
+        bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .map(|(index, b)| {
+                let value = u32::from_ne_bytes(*b);
+                if value > 1 {
+                    Err(ExecutionError::InvalidMaskValue { index, value })
+                } else {
+                    Ok(value)
+                }
+            })
+            .collect()
+    }
+
+    fn require_output_type(
+        &self,
+        program: &KernelProgram,
+        expected: DataType,
+    ) -> Result<(), ExecutionError> {
+        let actual = program.output_type();
+        if actual != expected {
+            return Err(ExecutionError::OutputType { expected, actual });
+        }
+        Ok(())
+    }
+
+    fn execute_bytes(
+        &self,
+        program: &KernelProgram,
+        batch: &Batch<'_>,
+        parameters: &Parameters,
+    ) -> Result<Bytes, ExecutionError> {
         let layout = BindingLayout::new(program);
         let host = layout.bind_host(batch, parameters)?;
         let rows = host.extent().row_count();
         if rows == 0 {
-            return Ok(Vec::new());
+            return Ok(Bytes::from_bytes_vec(Vec::new()));
         }
         let hw = &self.client.properties().hardware;
         // Each buffer plus the packed scalar/metadata info buffer needs a binding.
@@ -149,7 +204,11 @@ impl Executor {
         // SAFETY: a fresh, runtime-aligned allocation of the exact required size.
         // This layout's output is write-only; the emitter writes every logical row.
         buffers.push(unsafe {
-            DeviceBuffer::from_raw_parts(output.clone(), PhysicalType::F32, u64::from(rows))
+            DeviceBuffer::from_raw_parts(
+                output.clone(),
+                layout.buffers().last().expect("output slot").element_type(),
+                u64::from(rows),
+            )
         });
         let bound = layout.bind_device(&self.client, u64::from(rows), &buffers, parameters)?;
         let settings = self.settings();
@@ -179,22 +238,33 @@ impl Executor {
                 actual: bytes.len(),
             });
         }
-        Ok(bytes
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .map(|b| f32::from_ne_bytes(*b))
-            .collect())
+        Ok(bytes)
     }
 }
 
 #[derive(Debug)]
 pub enum ExecutionError {
     Binding(BindingError),
-    UnsupportedDevice { reason: &'static str },
-    GridTooLarge { required: u32, max: u32 },
+    OutputType {
+        expected: DataType,
+        actual: DataType,
+    },
+    InvalidMaskValue {
+        index: usize,
+        value: u32,
+    },
+    UnsupportedDevice {
+        reason: &'static str,
+    },
+    GridTooLarge {
+        required: u32,
+        max: u32,
+    },
     Backend(ServerError),
-    OutputLength { expected: usize, actual: usize },
+    OutputLength {
+        expected: usize,
+        actual: usize,
+    },
 }
 
 impl From<BindingError> for ExecutionError {
@@ -206,6 +276,12 @@ impl From<BindingError> for ExecutionError {
 impl fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::OutputType { expected, actual } => {
+                write!(f, "expected {expected} output, program produces {actual}")
+            }
+            Self::InvalidMaskValue { index, value } => {
+                write!(f, "mask row {index}: expected 0 or 1, got {value}")
+            }
             Self::Binding(error) => write!(f, "invalid query binding: {error}"),
             Self::UnsupportedDevice { reason } => {
                 write!(f, "unsupported execution settings: {reason}")

@@ -2,12 +2,14 @@ use std::{collections::BTreeSet, fmt};
 
 use crate::{Error, InputKind};
 
-/// Logical input types. Only F32 is supported by prepared arithmetic programs.
-/// I32 can describe an input so unsupported use or mismatched bindings are reported.
+/// Logical expression types. Only F32 input bindings are currently supported.
+/// I32 describes unsupported/mismatched inputs; Bool is a predicate result type.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DataType {
     F32,
     I32,
+    /// Boolean expression result; boolean inputs are not supported yet.
+    Bool,
 }
 
 impl fmt::Display for DataType {
@@ -15,6 +17,7 @@ impl fmt::Display for DataType {
         f.write_str(match self {
             Self::F32 => "f32",
             Self::I32 => "i32",
+            Self::Bool => "bool",
         })
     }
 }
