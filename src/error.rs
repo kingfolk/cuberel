@@ -65,6 +65,12 @@ pub enum Error {
         expected: DataType,
         actual: DataType,
     },
+    OperandTypeMismatch {
+        node: ExprId,
+        operand: ExprId,
+        expected: DataType,
+        actual: DataType,
+    },
     ColumnLengthMismatch {
         name: String,
         expected: usize,
@@ -113,6 +119,17 @@ impl fmt::Display for Error {
                 expected,
                 actual,
             } => write!(f, "{kind} {name:?} has type {actual}; expected {expected}"),
+            Self::OperandTypeMismatch {
+                node,
+                operand,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "node {} operand {} has type {actual}; expected {expected}",
+                node.index(),
+                operand.index()
+            ),
             Self::ColumnLengthMismatch {
                 name,
                 expected,

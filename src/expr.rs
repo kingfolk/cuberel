@@ -1,5 +1,5 @@
 use std::{
-    ops::{Add, Mul},
+    ops::{Add, Mul, Not},
     sync::Arc,
 };
 
@@ -18,6 +18,18 @@ impl ExprId {
     }
 }
 
+/// F32 comparisons with IEEE semantics: unordered comparisons are false except
+/// NotEqual, which is true. NaN is a floating-point value, not SQL NULL.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Comparison {
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+}
+
 /// An unbound node. Binary operands must precede their parent in the arena.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExprNode {
@@ -25,6 +37,10 @@ pub enum ExprNode {
     Parameter(String),
     Add(ExprId, ExprId),
     Mul(ExprId, ExprId),
+    Compare(Comparison, ExprId, ExprId),
+    And(ExprId, ExprId),
+    Or(ExprId, ExprId),
+    Not(ExprId),
 }
 
 impl ExprNode {
@@ -34,6 +50,10 @@ impl ExprNode {
         match self {
             Self::Add(a, b) => Self::Add(rebase(a), rebase(b)),
             Self::Mul(a, b) => Self::Mul(rebase(a), rebase(b)),
+            Self::Compare(op, a, b) => Self::Compare(op, rebase(a), rebase(b)),
+            Self::And(a, b) => Self::And(rebase(a), rebase(b)),
+            Self::Or(a, b) => Self::Or(rebase(a), rebase(b)),
+            Self::Not(a) => Self::Not(rebase(a)),
             leaf => leaf,
         }
     }
@@ -60,7 +80,38 @@ impl Expr {
         self.root
     }
 
-    fn combine(mut self, rhs: Self, op: fn(ExprId, ExprId) -> ExprNode) -> Self {
+    /// Compare F32 expressions. Use eq_expr/ne_expr to distinguish query
+    /// construction from Rust's structural PartialEq implementation.
+    pub fn eq_expr(self, rhs: Self) -> Self {
+        self.compare(rhs, Comparison::Equal)
+    }
+    pub fn ne_expr(self, rhs: Self) -> Self {
+        self.compare(rhs, Comparison::NotEqual)
+    }
+    pub fn lt(self, rhs: Self) -> Self {
+        self.compare(rhs, Comparison::LessThan)
+    }
+    pub fn le(self, rhs: Self) -> Self {
+        self.compare(rhs, Comparison::LessThanOrEqual)
+    }
+    pub fn gt(self, rhs: Self) -> Self {
+        self.compare(rhs, Comparison::GreaterThan)
+    }
+    pub fn ge(self, rhs: Self) -> Self {
+        self.compare(rhs, Comparison::GreaterThanOrEqual)
+    }
+    pub fn and(self, rhs: Self) -> Self {
+        self.combine(rhs, ExprNode::And)
+    }
+    pub fn or(self, rhs: Self) -> Self {
+        self.combine(rhs, ExprNode::Or)
+    }
+
+    fn compare(self, rhs: Self, comparison: Comparison) -> Self {
+        self.combine(rhs, |a, b| ExprNode::Compare(comparison, a, b))
+    }
+
+    fn combine(mut self, rhs: Self, op: impl FnOnce(ExprId, ExprId) -> ExprNode) -> Self {
         let offset = self.nodes.len();
         let invalid_root = self.root.0 >= offset || rhs.root.0 >= rhs.nodes.len();
         let rhs_root = ExprId(rhs.root.0.saturating_add(offset));
@@ -100,6 +151,21 @@ impl Mul for Expr {
     }
 }
 
+impl Not for Expr {
+    type Output = Self;
+    fn not(mut self) -> Self {
+        let invalid_root = self.root.index() >= self.nodes.len();
+        let root = ExprId(self.nodes.len());
+        self.nodes.push(ExprNode::Not(self.root));
+        self.root = if invalid_root {
+            ExprId(usize::MAX)
+        } else {
+            root
+        };
+        self
+    }
+}
+
 /// Bounds checked before allocating the prepared arena. Leaf depth is one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PrepareLimits {
@@ -123,6 +189,10 @@ pub enum ScalarOp {
     Parameter(ParameterId),
     Add(ExprId, ExprId),
     Mul(ExprId, ExprId),
+    Compare(Comparison, ExprId, ExprId),
+    And(ExprId, ExprId),
+    Or(ExprId, ExprId),
+    Not(ExprId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -146,7 +216,7 @@ impl TypedExpr {
     }
 }
 
-/// Immutable, bound arithmetic program, independent of CubeCL contexts/devices.
+/// Immutable, bound arithmetic or predicate program, independent of CubeCL contexts/devices.
 /// Clones share owned data. IDs are local to this program, not cross-program handles.
 #[derive(Clone, Debug)]
 pub struct KernelProgram {
@@ -202,7 +272,7 @@ pub fn prepare_with_limits(
     let mut depths = Vec::<usize>::with_capacity(node_count);
     for (index, node) in expr.nodes.iter().enumerate() {
         let node_id = ExprId(index);
-        let (op, depth) = match node {
+        let (op, depth, data_type) = match node {
             ExprNode::Column(name) => {
                 let kind = InputKind::Column;
                 let id = schema.column_id(name).ok_or_else(|| Error::UnknownName {
@@ -210,7 +280,7 @@ pub fn prepare_with_limits(
                     name: name.clone(),
                 })?;
                 require_f32(kind, name, schema.columns()[id.index()].data_type())?;
-                (ScalarOp::Column(id), 1)
+                (ScalarOp::Column(id), 1, DataType::F32)
             }
             ExprNode::Parameter(name) => {
                 let kind = InputKind::Parameter;
@@ -221,23 +291,34 @@ pub fn prepare_with_limits(
                         name: name.clone(),
                     })?;
                 require_f32(kind, name, schema.parameters()[id.index()].data_type())?;
-                (ScalarOp::Parameter(id), 1)
+                (ScalarOp::Parameter(id), 1, DataType::F32)
             }
-            ExprNode::Add(a, b) | ExprNode::Mul(a, b) => {
+            ExprNode::Add(a, b)
+            | ExprNode::Mul(a, b)
+            | ExprNode::Compare(_, a, b)
+            | ExprNode::And(a, b)
+            | ExprNode::Or(a, b) => {
+                let expected = match node {
+                    ExprNode::And(..) | ExprNode::Or(..) => DataType::Bool,
+                    _ => DataType::F32,
+                };
                 for &operand in [a, b] {
-                    if operand.0 >= index {
-                        return Err(Error::InvalidReference {
-                            node: node_id,
-                            operand,
-                        });
-                    }
+                    validate_operand(&nodes, node_id, operand, expected)?;
                 }
                 let depth = depths[a.0].max(depths[b.0]) + 1;
-                let op = match node {
-                    ExprNode::Add(..) => ScalarOp::Add(*a, *b),
-                    _ => ScalarOp::Mul(*a, *b),
+                let (op, ty) = match node {
+                    ExprNode::Add(..) => (ScalarOp::Add(*a, *b), DataType::F32),
+                    ExprNode::Mul(..) => (ScalarOp::Mul(*a, *b), DataType::F32),
+                    ExprNode::Compare(cmp, ..) => (ScalarOp::Compare(*cmp, *a, *b), DataType::Bool),
+                    ExprNode::And(..) => (ScalarOp::And(*a, *b), DataType::Bool),
+                    ExprNode::Or(..) => (ScalarOp::Or(*a, *b), DataType::Bool),
+                    _ => unreachable!(),
                 };
-                (op, depth)
+                (op, depth, ty)
+            }
+            ExprNode::Not(a) => {
+                validate_operand(&nodes, node_id, *a, DataType::Bool)?;
+                (ScalarOp::Not(*a), depths[a.0] + 1, DataType::Bool)
             }
         };
         if depth > limits.max_depth {
@@ -247,10 +328,7 @@ pub fn prepare_with_limits(
                 limit: limits.max_depth,
             });
         }
-        nodes.push(TypedExpr {
-            op,
-            data_type: DataType::F32,
-        });
+        nodes.push(TypedExpr { op, data_type });
         depths.push(depth);
     }
     Ok(KernelProgram {
@@ -266,6 +344,26 @@ fn require_f32(kind: InputKind, name: &str, data_type: DataType) -> Result<(), E
             kind,
             name: name.into(),
             data_type,
+        });
+    }
+    Ok(())
+}
+
+fn validate_operand(
+    nodes: &[TypedExpr],
+    node: ExprId,
+    operand: ExprId,
+    expected: DataType,
+) -> Result<(), Error> {
+    let value = nodes
+        .get(operand.index())
+        .ok_or(Error::InvalidReference { node, operand })?;
+    if value.data_type != expected {
+        return Err(Error::OperandTypeMismatch {
+            node,
+            operand,
+            expected,
+            actual: value.data_type,
         });
     }
     Ok(())

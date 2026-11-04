@@ -1,7 +1,9 @@
 # Kernel identity, definition reuse and failure completion
 
 Milestone 01 work item 5 completes the identity and error-path WIP after PR #4.
-Changes are local on `feat/kernel-identity`; no commit, push or PR is made.
+The implementation was merged in [PR #5](https://github.com/kingfolk/cuberel/pull/5).
+[Predicate support](predicates.md) extends these identities to boolean operations
+and typed mask outputs.
 
 ## Inspecting the key
 
@@ -18,7 +20,7 @@ not initialize a launcher or invoke define. ExpressionIdentity is an owned,
 inspectable snapshot, not a caller-supplied key that can override execution.
 It includes:
 
-- Codegen version (currently 3) and normalization format version (currently 1).
+- Codegen version (currently 4) and normalization format version (currently 1).
 - Normalized typed nodes and the remapped output root.
 - BindingLayout, including ABI version, physical types and address width.
 - Full executor KernelSettings, including dimensions and execution mode.
@@ -105,7 +107,7 @@ The lowerer verification gap is tracked separately in local TODO.md.
 
 On 2026-11-03, the pinned dependency remained
 `5037c0639ce3b1205392bdbe43dcf25e2ea09e29`, Rust/Cargo 1.99.0 on macOS/arm64.
-The full combined suite has 34 integration tests, including five new identity
+At Milestone 01 completion the combined suite had 34 integration tests, including five new identity
 and failure tests. Real CPU and native Metal are both required, without fallback
 or ignored tests. The no-runtime suite retains 22 frontend/layout tests.
 
@@ -130,6 +132,6 @@ GPU access outside the restricted sandbox. The expected test-only caught panic
 may print a panic-hook message with nocapture; a passing test asserts its typed
 completion error rather than treating that log as successful execution.
 
-All listed checks passed: 34 combined integration tests (zero ignored), 22
+At Milestone 01 completion all listed checks passed: 34 combined integration tests (zero ignored), 22
 no-runtime tests, Clippy/rustdoc with warnings denied, formatting and diff checks.
 Milestone 01 is verified within its stated CPU/native Metal scope.

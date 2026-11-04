@@ -18,9 +18,10 @@ let inputs = layout.bind_host(&batch, &parameters)?;
 See `examples/binding_layout.rs` for a complete runnable example. Layout creation
 deduplicates used columns and parameters, then sorts each by schema ID. It
 includes references in every validated arena node, even nodes unreachable from
-the root, matching preparation and reference evaluation. Unused schema fields
+the root, matching preparation. Unused schema fields
 do not occupy slots. Input buffers precede one output buffer. Inputs are read-only
-and output is write-only; all are contiguous, non-nullable scalar F32 elements.
+and output is write-only. ABI v2 has contiguous non-nullable scalar F32 inputs;
+output is F32 for arithmetic and U32 for Bool [predicate masks](predicates.md).
 Column names, parameter names and internal slot names are separate namespaces.
 
 The first scalar is physical U32 row count, ordinal 0 within U32. Used F32
@@ -73,7 +74,7 @@ dispatch. Nonempty submissions currently require positive static grid dimensions
 The pure `validate_buffers` API checks descriptors without allocating device
 memory. The device binding path also applies these checks:
 
-- Exact buffer count, F32 element type and logical length equal to row count.
+- Exact buffer count, declared physical element type and logical length equal to row count.
 - Checked start/end offsets, four-byte alignment and sufficient visible capacity.
 - U32 row count, byte length and active byte endpoint; U64 addressing is rejected.
 - Every handle belongs to the selected client service.
@@ -88,7 +89,7 @@ comes from the handle's visible bytes, not `BufferArg`'s nominal length field.
 Without narrowing, a padded allocation could expose the wrong length to IR.
 Allocation size itself may exceed U32 if the active view's endpoint fits; the
 adapter does not promise support for U64 addresses. Strides, vectors, NULLs and
-in-place output are outside ABI version 1.
+in-place output are outside ABI version 2.
 
 ## Verification
 

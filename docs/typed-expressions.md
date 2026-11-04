@@ -11,7 +11,8 @@ host evaluator. This document describes the retained frontend and input APIs.
 3. `prepare(&expression, &schema)` checks the graph and binds names to typed IDs.
 4. `Batch::new(row_count).with_column(...)` supplies borrowed host columns.
 5. `Parameters::new().with(...)` supplies named scalars.
-6. `executor.execute(&program, &batch, &parameters)` runs a real device kernel.
+6. `executor.execute(&program, &batch, &parameters)` runs an F32 device kernel;
+   `execute_mask` executes Bool programs.
 
 See `examples/runtime_expr.rs` for selected CPU/Metal execution and parameter
 rebinding. Frontend preparation and host binding work with no runtime feature.
@@ -25,7 +26,10 @@ ColumnId and ParameterId are positions within a program's schema, not globally
 unique handles. ExprId is local to an expression/program arena. IDs from different
 programs do not identify the same binding merely because their indexes match.
 
-Only non-nullable F32 arithmetic is implemented. DataType::I32, ColumnData::I32
+Non-nullable F32 arithmetic and Bool predicates are implemented. Bool is an
+expression result; Bool input declarations remain unsupported. See
+[predicates](predicates.md) for comparison and boolean APIs.
+DataType::I32, ColumnData::I32
 and ScalarValue::I32 describe unsupported/mismatched input and produce structured
 errors; they do not enable integer arithmetic. Used I32 declarations fail at
 preparation, and I32 data for an F32 declaration fails before device upload.
@@ -40,8 +44,8 @@ Every supplied batch column must still match the explicit row count.
 ## Graph validation and bounds
 
 Expressions use a flat arena instead of recursively owned boxes. Preparation and
-drop do not recurse through the graph. `+` and `*` merge arenas and rebase the
-right operand's IDs. Construction preserves parentheses and does not do CSE,
+drop do not recurse through the graph. Binary DSL operations merge arenas and
+rebase the right operand's IDs. Construction preserves parentheses and does not do CSE,
 reassociation or device compilation.
 
 `Expr::from_nodes(nodes, root)` is a raw frontend entry point. Preparation checks
@@ -50,7 +54,7 @@ all nodes, including ones unreachable from the root, rejecting:
 - Empty arenas or an out-of-range root.
 - Out-of-range, forward or self references; operands must precede their parent,
   which also rejects cycles.
-- Unknown names or unsupported used types.
+- Unknown names, unsupported used types or mismatched operand types.
 - Expressions exceeding the size or depth limits.
 
 Defaults are 4096 nodes and depth 128. A leaf has depth one; bounds are inclusive.
@@ -69,7 +73,8 @@ Parameter-only programs broadcast over the batch row count. Zero rows still
 validate required inputs, then produce empty output without allocation or launch.
 The original arithmetic grouping is retained. See `runtime-emitter.md` for the
 strict rounding workaround required by the pinned CubeCL optimizer and numerical
-limits; SQL NULL, NaN ordering and general bitwise identity are not defined here.
+limits; SQL NULL and general bitwise identity are not defined here. F32 comparison
+behavior for NaN, infinity and signed zero is defined in [predicates](predicates.md).
 
 Twelve frontend tests cover names, types, ownership/Send/Sync, malformed arenas,
 raw composition, unreachable nodes, inclusive bounds and a 10,000-node deep graph.

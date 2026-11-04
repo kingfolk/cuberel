@@ -9,7 +9,7 @@ use crate::{
     Parameters, ScalarOp, ScalarValue,
 };
 
-pub const BINDING_ABI_VERSION: u32 = 1;
+pub const BINDING_ABI_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PhysicalType {
@@ -39,13 +39,15 @@ pub enum BufferSource {
     Output,
 }
 
-/// A scalar F32 buffer, with a logical length equal to the invocation row count.
+/// A scalar F32 input or F32/U32 output buffer.
+/// Logical length equals the invocation row count.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BufferSlot {
     index: usize,
     source: BufferSource,
     name: String,
     access: BufferAccess,
+    element_type: PhysicalType,
 }
 
 impl BufferSlot {
@@ -62,7 +64,7 @@ impl BufferSlot {
         self.access
     }
     pub fn element_type(&self) -> PhysicalType {
-        PhysicalType::F32
+        self.element_type
     }
     pub fn alignment(&self) -> u64 {
         self.element_type().alignment()
@@ -131,6 +133,7 @@ impl BindingLayout {
                 source: BufferSource::Column(ColumnId(index)),
                 name: program.schema().columns()[index].name().into(),
                 access: BufferAccess::ReadOnly,
+                element_type: PhysicalType::F32,
             });
         }
         buffers.push(BufferSlot {
@@ -138,6 +141,11 @@ impl BindingLayout {
             source: BufferSource::Output,
             name: "output".into(),
             access: BufferAccess::WriteOnly,
+            element_type: match program.output_type() {
+                DataType::F32 => PhysicalType::F32,
+                DataType::Bool => PhysicalType::U32,
+                DataType::I32 => unreachable!("prepared output type"),
+            },
         });
         let mut scalars = vec![ScalarSlot {
             source: ScalarSource::RowCount,
@@ -184,12 +192,13 @@ impl BindingLayout {
     }
 
     /// Check active lengths and byte extents without allocating a device buffer.
-    /// ABI v1 conservatively limits both row count and active byte ends to U32.
+    /// ABI v2 conservatively limits both row count and active byte ends to U32.
     pub fn extent(&self, row_count: u64) -> Result<BufferExtent, BindingError> {
         let rows = u32::try_from(row_count).map_err(|_| BindingError::AddressOverflow {
             field: "row_count",
             value: row_count,
         })?;
+        // Every supported buffer slot is four bytes per row in ABI v2.
         let bytes = row_count * PhysicalType::F32.size_bytes();
         if bytes > u64::from(u32::MAX) {
             return Err(BindingError::AddressOverflow {
@@ -452,10 +461,10 @@ impl fmt::Display for BindingError {
         match self {
             Self::Input(error) => error.fmt(f),
             Self::UnsupportedAddressType(ty) => {
-                write!(f, "ABI v1 does not support address type {ty}")
+                write!(f, "ABI v2 does not support address type {ty}")
             }
             Self::AddressOverflow { field, value } => {
-                write!(f, "{field}={value} exceeds the ABI v1 address range")
+                write!(f, "{field}={value} exceeds the ABI v2 address range")
             }
             Self::BufferCount { expected, actual } => {
                 write!(f, "expected {expected} buffers, got {actual}")

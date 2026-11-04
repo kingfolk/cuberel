@@ -4,6 +4,8 @@ Milestone 01 work item 4 compiles a prepared expression to CubeCL IR and execute
 it on a selected client. `Executor::execute(program, batch, parameters)` is a safe,
 synchronous API returning `Result<Vec<f32>, ExecutionError>`. It supports column
 and scalar leaves, addition and multiplication of non-nullable scalar F32 values.
+[Predicate execution](predicates.md) now adds F32 comparisons and boolean
+composition through `Executor::execute_mask`, returning dense U32 flags.
 No Rust source or `#[cube]` kernel is generated, and query execution does not call
 rustc. See `examples/runtime_expr.rs` for add, multiply, combined expressions and
 parameter rebinding in one process.

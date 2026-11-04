@@ -296,7 +296,7 @@ impl ValidatedBindings {
                 BufferAccess::WriteOnly => BufferIOAttr::WriteOnly,
             });
             // SAFETY: bind_device checked and narrowed the handle to exactly the
-            // logical extent. ABI v1 has scalar F32 buffers, not vector lanes.
+            // logical extent. ABI v2 has scalar F32/U32 buffers, not vector lanes.
             let buffer =
                 unsafe { BufferArg::from_raw_parts(handle, self.extent.row_count() as usize) };
             launcher.register_buffer(buffer, slot.element_type().size_bytes() as usize);
