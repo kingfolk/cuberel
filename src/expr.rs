@@ -41,6 +41,7 @@ pub enum ExprNode {
     And(ExprId, ExprId),
     Or(ExprId, ExprId),
     Not(ExprId),
+    IsNull(ExprId),
 }
 
 impl ExprNode {
@@ -54,6 +55,7 @@ impl ExprNode {
             Self::And(a, b) => Self::And(rebase(a), rebase(b)),
             Self::Or(a, b) => Self::Or(rebase(a), rebase(b)),
             Self::Not(a) => Self::Not(rebase(a)),
+            Self::IsNull(a) => Self::IsNull(rebase(a)),
             leaf => leaf,
         }
     }
@@ -107,6 +109,23 @@ impl Expr {
         self.combine(rhs, ExprNode::Or)
     }
 
+    /// Construct a non-nullable Bool expression testing F32 or Bool validity.
+    pub fn is_null(self) -> Self {
+        self.unary(ExprNode::IsNull)
+    }
+
+    fn unary(mut self, op: fn(ExprId) -> ExprNode) -> Self {
+        let invalid_root = self.root.index() >= self.nodes.len();
+        let root = ExprId(self.nodes.len());
+        self.nodes.push(op(self.root));
+        self.root = if invalid_root {
+            ExprId(usize::MAX)
+        } else {
+            root
+        };
+        self
+    }
+
     fn compare(self, rhs: Self, comparison: Comparison) -> Self {
         self.combine(rhs, |a, b| ExprNode::Compare(comparison, a, b))
     }
@@ -153,16 +172,8 @@ impl Mul for Expr {
 
 impl Not for Expr {
     type Output = Self;
-    fn not(mut self) -> Self {
-        let invalid_root = self.root.index() >= self.nodes.len();
-        let root = ExprId(self.nodes.len());
-        self.nodes.push(ExprNode::Not(self.root));
-        self.root = if invalid_root {
-            ExprId(usize::MAX)
-        } else {
-            root
-        };
-        self
+    fn not(self) -> Self {
+        self.unary(ExprNode::Not)
     }
 }
 
@@ -193,6 +204,7 @@ pub enum ScalarOp {
     And(ExprId, ExprId),
     Or(ExprId, ExprId),
     Not(ExprId),
+    IsNull(ExprId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -328,6 +340,15 @@ pub fn prepare_with_limits(
                 validate_operand(&nodes, node_id, *a, DataType::Bool)?;
                 (ScalarOp::Not(*a), depths[a.0] + 1, DataType::Bool)
             }
+            ExprNode::IsNull(a) => {
+                if a.index() >= index {
+                    return Err(Error::InvalidReference {
+                        node: node_id,
+                        operand: *a,
+                    });
+                }
+                (ScalarOp::IsNull(*a), depths[a.0] + 1, DataType::Bool)
+            }
         };
         if depth > limits.max_depth {
             return Err(Error::ExpressionTooDeep {
@@ -339,16 +360,13 @@ pub fn prepare_with_limits(
         let nullable = match op {
             ScalarOp::Column(id) => schema.columns()[id.index()].is_nullable(),
             ScalarOp::Parameter(id) => schema.parameters()[id.index()].is_nullable(),
-            ScalarOp::Add(a, b) | ScalarOp::Mul(a, b) => {
-                nodes[a.index()].nullable || nodes[b.index()].nullable
-            }
-            ScalarOp::Compare(_, a, b) => {
-                if nodes[a.index()].nullable || nodes[b.index()].nullable {
-                    return Err(Error::UnsupportedNullableOperation { node: node_id });
-                }
-                false
-            }
-            ScalarOp::And(..) | ScalarOp::Or(..) | ScalarOp::Not(..) => false,
+            ScalarOp::Add(a, b)
+            | ScalarOp::Mul(a, b)
+            | ScalarOp::Compare(_, a, b)
+            | ScalarOp::And(a, b)
+            | ScalarOp::Or(a, b) => nodes[a.index()].nullable || nodes[b.index()].nullable,
+            ScalarOp::Not(a) => nodes[a.index()].nullable,
+            ScalarOp::IsNull(_) => false,
         };
         nodes.push(TypedExpr {
             op,

@@ -34,8 +34,8 @@ including unreachable ones, are checked for valid references and operand types.
 Type errors report the consuming node, operand ID, expected type and actual type.
 Unary nodes participate in preparation depth/node bounds and malformed-root checks.
 
-Comparison operands must remain non-nullable F32; nullable comparisons are
-rejected. Bool is currently an expression result type; a referenced Bool input declaration is explicitly
+Comparison operands are F32 and may now be nullable. See
+[three-valued predicates](three-valued-predicates.md) for NULL propagation. Bool is currently an expression result type; a referenced Bool input declaration is explicitly
 unsupported. There are no implicit numeric/bool conversions or bool comparisons.
 Boolean composition evaluates its operands eagerly. All current operations are
 pure and safe to evaluate on every in-range row; this does not establish an
@@ -66,12 +66,13 @@ remain applicable. Buffer validation rejects an F32 allocation descriptor for
 a predicate's U32 output, even though their byte sizes match.
 
 `Executor::execute` retains `Vec<f32>` output and rejects Bool programs.
-`Executor::execute_mask` returns `Vec<u32>` and rejects F32 programs. Both reject
+`Executor::execute_mask` returns WHERE `Vec<u32>` flags and rejects F32 programs.
+`execute_predicate` additionally exposes Bool value/validity through `NullableBool`. Both reject
 wrong result types before allocation/launch; empty batches still validate all
 required inputs. Readback uses the same checked completion path, then validates
 mask values are 0/1. It does not reinterpret arbitrary bytes as Rust bools.
 
-Codegen version is now 5 after nullable projection support. Identity includes
+Codegen version is now 6 after three-valued predicate support. Identity includes
 comparison kind, boolean operations,
 typed nodes, remapped operands/root and the updated physical layout. Duplicate
 pure predicate nodes normalize with the existing structural interning. Parameter
@@ -81,10 +82,10 @@ reuses the artifact after parameters, input addresses and row counts change.
 
 ## Scope and verification
 
-This produces a non-nullable dense mask. F32 projection validity is implemented
-separately; nullable predicates, SQL three-valued logic,
-`IS NULL`, Arrow arrays/offsets, integer expressions, row compaction and relation
-operators remain later features. No host expression interpreter is introduced.
+The mask itself has no NULL flags: false and NULL both reject a row. Nullable
+predicates, SQL three-valued logic and IS NULL are now implemented separately in
+[three-valued predicates](three-valued-predicates.md). Arrow arrays/offsets, integer
+expressions, row compaction and relation operators remain later features. No host expression interpreter is introduced.
 
 Six new tests cover mixed-type preparation, invalid/unreachable operands,
 unary/binary reference and depth limits, output descriptor checks, and actual

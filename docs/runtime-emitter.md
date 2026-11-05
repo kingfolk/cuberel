@@ -8,6 +8,8 @@ and scalar leaves, addition and multiplication of scalar F32 values.
 planes and `Executor::execute_nullable` for nullable roots.
 [Predicate execution](predicates.md) now adds F32 comparisons and boolean
 composition through `Executor::execute_mask`, returning dense U32 flags.
+[Three-valued predicates](three-valued-predicates.md) extends these to NULL-aware
+logic/IS NULL and `execute_predicate` Bool projections.
 No Rust source or `#[cube]` kernel is generated, and query execution does not call
 rustc. See `examples/runtime_expr.rs` for add, multiply, combined expressions and
 parameter rebinding in one process.

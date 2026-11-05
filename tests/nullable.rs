@@ -56,23 +56,21 @@ fn nullability_is_bound_and_propagated_without_changing_numeric_type() {
 }
 
 #[test]
-fn nullable_comparisons_are_rejected_before_three_valued_logic_exists() {
+fn nullable_comparisons_infer_nullable_bool() {
     let schema = schema();
     for expr in [
         col("a").gt(col("b")),
         (col("b") * param("scale")).eq_expr(col("b")),
     ] {
-        assert!(matches!(
-            prepare(&expr, &schema),
-            Err(Error::UnsupportedNullableOperation { .. })
-        ));
+        let program = prepare(&expr, &schema).unwrap();
+        assert_eq!(program.output_type(), DataType::Bool);
+        assert!(program.output_nullable());
     }
     assert!(
         !prepare(&col("b").lt(col("b")), &schema)
             .unwrap()
             .output_nullable()
     );
-    // Unreachable inputs still bind, but their nullability does not taint the root.
     let program = prepare(
         &Expr::from_nodes(
             vec![ExprNode::Column("b".into()), ExprNode::Column("a".into())],

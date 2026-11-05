@@ -14,7 +14,7 @@ host evaluator. This document describes the retained frontend and input APIs.
 5. `Parameters::new().with(...)` supplies named scalars.
 6. `executor.execute(&program, &batch, &parameters)` runs a non-nullable F32 kernel;
    `execute_nullable` returns F32 values and validity;
-   `execute_mask` executes Bool programs.
+   `execute_predicate` preserves nullable Bool; `execute_mask` produces WHERE flags.
 
 See `examples/runtime_expr.rs` for selected CPU/Metal execution and parameter
 rebinding. Frontend preparation and host binding work with no runtime feature.
@@ -28,7 +28,7 @@ ColumnId and ParameterId are positions within a program's schema, not globally
 unique handles. ExprId is local to an expression/program arena. IDs from different
 programs do not identify the same binding merely because their indexes match.
 
-Nullable F32 arithmetic and non-nullable Bool predicates are implemented.
+Nullable F32 arithmetic and nullable Bool predicates are implemented.
 See [nullable projections](nullable-projection.md) for schema/input/result
 contracts. Bool is an expression result; Bool input declarations remain unsupported. See
 [predicates](predicates.md) for comparison and boolean APIs.
@@ -77,7 +77,8 @@ validate required inputs, then produce empty output without allocation or launch
 The original arithmetic grouping is retained. See `runtime-emitter.md` for the
 strict rounding workaround required by the pinned CubeCL optimizer and numerical
 limits; general bitwise identity is not defined here. Nullable add/mul propagates
-validity; nullable comparisons are currently rejected. F32 comparison
+validity. Nullable comparisons, three-valued logic and IS NULL are defined in
+[three-valued predicates](three-valued-predicates.md). F32 comparison
 behavior for NaN, infinity and signed zero is defined in [predicates](predicates.md).
 
 Twelve frontend tests cover names, types, ownership/Send/Sync, malformed arenas,
