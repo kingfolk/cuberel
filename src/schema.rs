@@ -46,9 +46,25 @@ impl ParameterId {
 pub struct Field {
     name: String,
     data_type: DataType,
+    nullable: bool,
 }
 
 impl Field {
+    pub fn new(name: impl Into<String>, data_type: DataType) -> Self {
+        Self {
+            name: name.into(),
+            data_type,
+            nullable: false,
+        }
+    }
+    pub fn with_nullable(mut self, nullable: bool) -> Self {
+        self.nullable = nullable;
+        self
+    }
+    pub fn is_nullable(&self) -> bool {
+        self.nullable
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -69,6 +85,19 @@ impl Schema {
         columns: &[(&str, DataType)],
         parameters: &[(&str, DataType)],
     ) -> Result<Self, Error> {
+        let columns: Vec<_> = columns
+            .iter()
+            .map(|&(name, ty)| Field::new(name, ty))
+            .collect();
+        let parameters: Vec<_> = parameters
+            .iter()
+            .map(|&(name, ty)| Field::new(name, ty))
+            .collect();
+        Self::from_fields(&columns, &parameters)
+    }
+
+    /// Declare nullability explicitly. Schema::new keeps non-nullable defaults.
+    pub fn from_fields(columns: &[Field], parameters: &[Field]) -> Result<Self, Error> {
         Ok(Self {
             columns: fields(columns, InputKind::Column)?,
             parameters: fields(parameters, InputKind::Parameter)?,
@@ -95,10 +124,11 @@ impl Schema {
     }
 }
 
-fn fields(declarations: &[(&str, DataType)], kind: InputKind) -> Result<Vec<Field>, Error> {
+fn fields(declarations: &[Field], kind: InputKind) -> Result<Vec<Field>, Error> {
     let mut names = BTreeSet::new();
     let mut fields = Vec::with_capacity(declarations.len());
-    for &(name, data_type) in declarations {
+    for field in declarations {
+        let name = field.name.as_str();
         if name.is_empty() {
             return Err(Error::EmptyName { kind });
         }
@@ -108,10 +138,7 @@ fn fields(declarations: &[(&str, DataType)], kind: InputKind) -> Result<Vec<Fiel
                 name: name.into(),
             });
         }
-        fields.push(Field {
-            name: name.into(),
-            data_type,
-        });
+        fields.push(field.clone());
     }
     Ok(fields)
 }

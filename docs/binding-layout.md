@@ -19,17 +19,19 @@ See `examples/binding_layout.rs` for a complete runnable example. Layout creatio
 deduplicates used columns and parameters, then sorts each by schema ID. It
 includes references in every validated arena node, even nodes unreachable from
 the root, matching preparation. Unused schema fields
-do not occupy slots. Input buffers precede one output buffer. Inputs are read-only
-and output is write-only. ABI v2 has contiguous non-nullable scalar F32 inputs;
-output is F32 for arithmetic and U32 for Bool [predicate masks](predicates.md).
+do not occupy slots. Input buffers precede the output planes. Inputs are read-only and outputs are
+write-only. ABI v3 adds dense U32 validity beside nullable F32 inputs and outputs;
+non-nullable Bool [predicate masks](predicates.md) retain U32 value output. See
+[nullable projection ABI](nullable-projection.md) for exact ordering and contracts.
 Column names, parameter names and internal slot names are separate namespaces.
 
 The first scalar is physical U32 row count, ordinal 0 within U32. Used F32
-parameters follow in schema order, with ordinals 0, 1, and so on within F32.
+parameter payloads follow in schema order, with ordinals 0, 1, and so on within F32.
+Nullable parameters additionally have U32 validity ordinals starting at 1.
 These ordinals are per type, not positions in one mixed scalar array. The caller's
 insertion order does not affect binding. Bound parameter values are copied into
 a snapshot; host column slices are borrowed. Parameter-only programs still have
-a row count and output buffer.
+a row count and output planes.
 
 Layout equality/hash includes ABI version, address width and binding structure.
 It excludes input addresses and parameter values. Two different computations
@@ -48,11 +50,12 @@ into a persistent `KernelProgram`.
 `DeviceBuffer::from_raw_parts(handle, element_type, logical_len)` imports an
 opaque runtime handle. This is unsafe because metadata cannot prove that the
 allocation is live, its base is aligned, or readable bytes contain initialized
-values of the claimed type. A write-only output need not be initialized.
+values of the claimed type. Readable payloads, including NULL slots, must be initialized. Validity flags are
+0/1; a write-only output need not be initialized.
 
 `layout.bind_device(client, row_count, buffers, parameters)` checks all arguments
 before touching a thread-local launcher. Buffers must be supplied in layout order,
-including the output. It returns owned `ValidatedBindings` that retain handles
+including all output planes. It returns owned `ValidatedBindings` that retain handles
 and scalar snapshots. Consuming `launch(client, settings, kernel, cube_count)`
 registers the complete argument list without awaits or exposing a partially
 populated launcher. A guard discards launcher state if registration unwinds.
@@ -89,7 +92,7 @@ comes from the handle's visible bytes, not `BufferArg`'s nominal length field.
 Without narrowing, a padded allocation could expose the wrong length to IR.
 Allocation size itself may exceed U32 if the active view's endpoint fits; the
 adapter does not promise support for U64 addresses. Strides, vectors, NULLs and
-in-place output are outside ABI version 2.
+in-place output are outside ABI version 3.
 
 ## Verification
 

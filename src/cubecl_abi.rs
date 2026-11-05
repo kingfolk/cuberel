@@ -38,6 +38,7 @@ pub struct KernelDeclaration {
     builder: KernelBuilder,
     buffers: Vec<Value>,
     parameters: Vec<(ParameterId, Value)>,
+    parameter_validities: Vec<(ParameterId, Value)>,
     row_count_raw: Value,
     row_count: Value,
 }
@@ -63,8 +64,28 @@ impl KernelDeclaration {
             .find(|(parameter, _)| *parameter == id)
             .map(|(_, value)| *value)
     }
+    fn buffer(&self, source: BufferSource) -> Option<Value> {
+        self.layout
+            .buffers()
+            .iter()
+            .zip(&self.buffers)
+            .find(|(slot, _)| slot.source() == source)
+            .map(|(_, value)| *value)
+    }
+    pub fn column_validity(&self, id: ColumnId) -> Option<Value> {
+        self.buffer(BufferSource::ColumnValidity(id))
+    }
+    pub fn parameter_validity(&self, id: ParameterId) -> Option<Value> {
+        self.parameter_validities
+            .iter()
+            .find(|(parameter, _)| *parameter == id)
+            .map(|(_, value)| *value)
+    }
     pub fn output(&self) -> Value {
-        *self.buffers.last().expect("layout always has an output")
+        self.buffer(BufferSource::Output).expect("layout output")
+    }
+    pub fn output_validity(&self) -> Option<Value> {
+        self.buffer(BufferSource::OutputValidity)
     }
     /// Abstract IndexType value, suitable for index comparisons and memory operations.
     pub fn row_count(&self) -> Value {
@@ -96,7 +117,8 @@ impl DeviceBuffer {
     /// The handle must represent real live runtime memory with an appropriately
     /// aligned allocation base. Its readable elements must be initialized and
     /// represented by element_type. For a write-only output, initialization is
-    /// not required. Metadata alone cannot prove these conditions.
+    /// not required. Validity buffers must contain only 0 or 1. NULL payloads
+    /// must still be initialized F32 values. Metadata cannot prove these conditions.
     pub unsafe fn from_raw_parts(
         handle: Handle,
         element_type: PhysicalType,
@@ -137,6 +159,7 @@ impl BindingLayout {
             buffers.push(builder.buffer(ty));
         }
         let mut parameters = Vec::new();
+        let mut parameter_validities = Vec::new();
         let mut raw_count = None;
         for slot in self.scalars() {
             let elem = slot.element_type().elem_type();
@@ -152,6 +175,7 @@ impl BindingLayout {
             match slot.source() {
                 ScalarSource::RowCount => raw_count = Some(value),
                 ScalarSource::Parameter(id) => parameters.push((id, value)),
+                ScalarSource::ParameterValidity(id) => parameter_validities.push((id, value)),
             }
         }
         let raw_count = raw_count.expect("layout always declares row_count");
@@ -163,13 +187,14 @@ impl BindingLayout {
             builder,
             buffers,
             parameters,
+            parameter_validities,
             row_count_raw: raw_count,
             row_count: count,
         })
     }
 
     /// Fully validate before any thread-local launcher state is touched. Buffers
-    /// follow layout order, including the final write-only output.
+    /// follow layout order, including all write-only output slots.
     pub fn bind_device(
         &self,
         client: &Client,
@@ -185,17 +210,31 @@ impl BindingLayout {
                 return Err(BindingError::ForeignDeviceBuffer { index });
             }
         }
-        let output_id = buffers
-            .last()
-            .expect("validated buffer count")
-            .handle
-            .memory
-            .clone()
-            .binding()
-            .id();
-        for (index, buffer) in buffers[..buffers.len() - 1].iter().enumerate() {
-            if buffer.handle.memory.clone().binding().id() == output_id {
-                return Err(BindingError::AliasedOutput { input_index: index });
+        // Every output must have its own allocation, separate from all inputs
+        // and all other outputs, including disjoint views of the same allocation.
+        for slot in self
+            .buffers()
+            .iter()
+            .filter(|slot| slot.access() == BufferAccess::WriteOnly)
+        {
+            let output_index = slot.index();
+            let output_id = buffers[output_index].handle.memory.clone().binding().id();
+            for (index, buffer) in buffers.iter().enumerate() {
+                if index == output_index {
+                    continue;
+                }
+                if buffer.handle.memory.clone().binding().id() == output_id {
+                    return Err(
+                        if self.buffers()[index].access() == BufferAccess::ReadOnly {
+                            BindingError::AliasedOutput { input_index: index }
+                        } else {
+                            BindingError::AliasedOutputs {
+                                first: output_index.min(index),
+                                second: output_index.max(index),
+                            }
+                        },
+                    );
+                }
             }
         }
         let handles = buffers
@@ -296,7 +335,7 @@ impl ValidatedBindings {
                 BufferAccess::WriteOnly => BufferIOAttr::WriteOnly,
             });
             // SAFETY: bind_device checked and narrowed the handle to exactly the
-            // logical extent. ABI v2 has scalar F32/U32 buffers, not vector lanes.
+            // logical extent. ABI v3 has scalar F32/U32 buffers, not vector lanes.
             let buffer =
                 unsafe { BufferArg::from_raw_parts(handle, self.extent.row_count() as usize) };
             launcher.register_buffer(buffer, slot.element_type().size_bytes() as usize);

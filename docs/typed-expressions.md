@@ -6,12 +6,14 @@ host evaluator. This document describes the retained frontend and input APIs.
 
 ## Public workflow
 
-1. `Schema::new(columns, parameters)` declares separate name/type namespaces.
+1. `Schema::new(columns, parameters)` declares non-nullable names/types;
+   `Schema::from_fields` accepts explicit nullable fields.
 2. `col("a") * param("scale") + col("b")` builds an owned expression graph.
 3. `prepare(&expression, &schema)` checks the graph and binds names to typed IDs.
 4. `Batch::new(row_count).with_column(...)` supplies borrowed host columns.
 5. `Parameters::new().with(...)` supplies named scalars.
-6. `executor.execute(&program, &batch, &parameters)` runs an F32 device kernel;
+6. `executor.execute(&program, &batch, &parameters)` runs a non-nullable F32 kernel;
+   `execute_nullable` returns F32 values and validity;
    `execute_mask` executes Bool programs.
 
 See `examples/runtime_expr.rs` for selected CPU/Metal execution and parameter
@@ -26,8 +28,9 @@ ColumnId and ParameterId are positions within a program's schema, not globally
 unique handles. ExprId is local to an expression/program arena. IDs from different
 programs do not identify the same binding merely because their indexes match.
 
-Non-nullable F32 arithmetic and Bool predicates are implemented. Bool is an
-expression result; Bool input declarations remain unsupported. See
+Nullable F32 arithmetic and non-nullable Bool predicates are implemented.
+See [nullable projections](nullable-projection.md) for schema/input/result
+contracts. Bool is an expression result; Bool input declarations remain unsupported. See
 [predicates](predicates.md) for comparison and boolean APIs.
 DataType::I32, ColumnData::I32
 and ScalarValue::I32 describe unsupported/mismatched input and produce structured
@@ -73,7 +76,8 @@ Parameter-only programs broadcast over the batch row count. Zero rows still
 validate required inputs, then produce empty output without allocation or launch.
 The original arithmetic grouping is retained. See `runtime-emitter.md` for the
 strict rounding workaround required by the pinned CubeCL optimizer and numerical
-limits; SQL NULL and general bitwise identity are not defined here. F32 comparison
+limits; general bitwise identity is not defined here. Nullable add/mul propagates
+validity; nullable comparisons are currently rejected. F32 comparison
 behavior for NaN, infinity and signed zero is defined in [predicates](predicates.md).
 
 Twelve frontend tests cover names, types, ownership/Send/Sync, malformed arenas,

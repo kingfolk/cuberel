@@ -199,13 +199,18 @@ pub enum ScalarOp {
 pub struct TypedExpr {
     op: ScalarOp,
     data_type: DataType,
+    nullable: bool,
 }
 
 impl TypedExpr {
+    pub fn is_nullable(&self) -> bool {
+        self.nullable
+    }
     pub(crate) fn with_op(&self, op: ScalarOp) -> Self {
         Self {
             op,
             data_type: self.data_type,
+            nullable: self.nullable,
         }
     }
     pub fn op(&self) -> ScalarOp {
@@ -234,6 +239,9 @@ impl KernelProgram {
     }
     pub fn root(&self) -> ExprId {
         self.root
+    }
+    pub fn output_nullable(&self) -> bool {
+        self.nodes[self.root.0].nullable
     }
     pub fn output_type(&self) -> DataType {
         self.nodes[self.root.0].data_type
@@ -328,7 +336,25 @@ pub fn prepare_with_limits(
                 limit: limits.max_depth,
             });
         }
-        nodes.push(TypedExpr { op, data_type });
+        let nullable = match op {
+            ScalarOp::Column(id) => schema.columns()[id.index()].is_nullable(),
+            ScalarOp::Parameter(id) => schema.parameters()[id.index()].is_nullable(),
+            ScalarOp::Add(a, b) | ScalarOp::Mul(a, b) => {
+                nodes[a.index()].nullable || nodes[b.index()].nullable
+            }
+            ScalarOp::Compare(_, a, b) => {
+                if nodes[a.index()].nullable || nodes[b.index()].nullable {
+                    return Err(Error::UnsupportedNullableOperation { node: node_id });
+                }
+                false
+            }
+            ScalarOp::And(..) | ScalarOp::Or(..) | ScalarOp::Not(..) => false,
+        };
+        nodes.push(TypedExpr {
+            op,
+            data_type,
+            nullable,
+        });
         depths.push(depth);
     }
     Ok(KernelProgram {

@@ -9,14 +9,14 @@ use std::{
 use cubecl::{
     ir::{
         Builtin, FloatKind, OpInserter, UIntKind,
-        attributes::FloatAttr,
+        attributes::{BoolAttr, FloatAttr},
         dialect::{
             branch::{IfOp, ReturnOp},
             cmp::{
                 FEqualOp, FGreaterThanOp, FGreaterThanOrEqualOp, FLessThanOp, FLessThanOrEqualOp,
                 FNotEqualOp, ULessThanOp,
             },
-            general::{BoolAndOp, BoolNotOp, BoolOrOp, CastOp, ReadBuiltinOp},
+            general::{BoolAndOp, BoolNotOp, BoolOrOp, CastOp, ReadBuiltinOp, SelectOp},
             math::{FMulOp, FmaOp},
             memory::{IndexOp, LoadOp, StoreOp},
         },
@@ -30,7 +30,7 @@ use cubecl::{
 use crate::{Comparison, DataType, ExprId, KernelProgram, ScalarOp, TypedExpr, abi::BindingLayout};
 
 // Change when emitted semantics or instruction policy changes.
-pub const CODEGEN_VERSION: u32 = 4;
+pub const CODEGEN_VERSION: u32 = 5;
 
 /// Structural identity for compilation and caching of an expression kernel.
 /// Dynamic values, handles, and row counts are absent.
@@ -140,6 +140,11 @@ impl CubeKernel for ExpressionKernel {
         let f32_ty = ElemType::Float(FloatKind::F32).to_type(scope.ctx());
         let one = FloatAttr::from_f64(scope.ctx(), f32_ty, 1.0);
         let one = scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(one)));
+        let zero = FloatAttr::from_f64(scope.ctx(), f32_ty, 0.0);
+        let zero = scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(zero)));
+        let valid_true =
+            scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(BoolAttr(true))));
+        let bool_ty = ElemType::Bool.to_type(scope.ctx());
         let index_ty = ElemType::Index.to_type(scope.ctx());
         let index = scope.register_with_result(&ReadBuiltinOp::new(
             scope.ctx_mut(),
@@ -153,6 +158,7 @@ impl CubeKernel for ExpressionKernel {
         ));
         let branch = IfOp::new(scope.ctx_mut(), in_range);
         let body = scope.branch_child(OpInserter::new_at_block_end(branch.then_block(scope.ctx())));
+        let mut validities: Vec<Value> = Vec::with_capacity(self.program.nodes().len());
         let mut values: Vec<Value> = Vec::with_capacity(self.program.nodes().len());
         // This match runs once while constructing IR, not once per row on a device.
         // Arena order preserves DAG sharing and the original arithmetic grouping.
@@ -222,6 +228,42 @@ impl CubeKernel for ExpressionKernel {
                     body.register_with_result(&BoolNotOp::new(body.ctx_mut(), values[a.index()]))
                 }
             };
+            let valid = match node.op() {
+                ScalarOp::Column(id) if node.is_nullable() => {
+                    let buffer = declaration
+                        .column_validity(id)
+                        .expect("nullable column validity");
+                    let ptr = body.register_with_result(&IndexOp::maybe_checked(
+                        body.ctx_mut(),
+                        buffer,
+                        index,
+                        true,
+                    ));
+                    let raw = body.register_with_result(&LoadOp::new(body.ctx_mut(), ptr));
+                    body.register_with_result(&CastOp::new(body.ctx_mut(), bool_ty, raw))
+                }
+                ScalarOp::Parameter(id) if node.is_nullable() => {
+                    let raw = declaration
+                        .parameter_validity(id)
+                        .expect("nullable parameter validity");
+                    body.register_with_result(&CastOp::new(body.ctx_mut(), bool_ty, raw))
+                }
+                ScalarOp::Add(a, b) | ScalarOp::Mul(a, b) if node.is_nullable() => body
+                    .register_with_result(&BoolAndOp::new(
+                        body.ctx_mut(),
+                        validities[a.index()],
+                        validities[b.index()],
+                    )),
+                _ => valid_true,
+            };
+            // Every payload load is initialized. Select canonicalizes invalid
+            // values to +0, including leaves before later arithmetic uses them.
+            let value = if node.is_nullable() {
+                body.register_with_result(&SelectOp::new(body.ctx_mut(), valid, value, zero))
+            } else {
+                value
+            };
+            validities.push(valid);
             values.push(value);
         }
         let ptr = body.register_with_result(&IndexOp::maybe_checked(
@@ -240,6 +282,21 @@ impl CubeKernel for ExpressionKernel {
             result
         };
         body.register(&StoreOp::new(body.ctx_mut(), ptr, result));
+        if let Some(buffer) = declaration.output_validity() {
+            let ptr = body.register_with_result(&IndexOp::maybe_checked(
+                body.ctx_mut(),
+                buffer,
+                index,
+                true,
+            ));
+            let ty = ElemType::UInt(UIntKind::U32).to_type(body.ctx());
+            let valid = body.register_with_result(&CastOp::new(
+                body.ctx_mut(),
+                ty,
+                validities[self.program.root().index()],
+            ));
+            body.register(&StoreOp::new(body.ctx_mut(), ptr, valid));
+        }
         body.terminate_yield();
         let other =
             scope.branch_child(OpInserter::new_at_block_end(branch.else_block(scope.ctx())));

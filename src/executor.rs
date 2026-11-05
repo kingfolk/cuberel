@@ -20,7 +20,7 @@ use cubecl::{
 
 use crate::{
     Batch, DataType, KernelProgram, Parameters,
-    abi::{BindingError, BindingLayout, PhysicalType},
+    abi::{BindingError, BindingLayout, BufferSource},
     cubecl_abi::DeviceBuffer,
     emitter::{ExpressionIdentity, ExpressionKernel},
 };
@@ -114,7 +114,8 @@ impl Executor {
         parameters: &Parameters,
     ) -> Result<Vec<f32>, ExecutionError> {
         self.require_output_type(program, DataType::F32)?;
-        let bytes = self.execute_bytes(program, batch, parameters)?;
+        self.require_non_nullable(program)?;
+        let bytes = self.execute_bytes(program, batch, parameters)?.values;
         Ok(bytes
             .as_chunks::<4>()
             .0
@@ -132,21 +133,40 @@ impl Executor {
         parameters: &Parameters,
     ) -> Result<Vec<u32>, ExecutionError> {
         self.require_output_type(program, DataType::Bool)?;
-        let bytes = self.execute_bytes(program, batch, parameters)?;
-        bytes
+        self.require_non_nullable(program)?;
+        let bytes = self.execute_bytes(program, batch, parameters)?.values;
+        decode_validity(&bytes)
+    }
+
+    /// Execute an F32 projection with dense 0/1 validity. Non-nullable
+    /// programs are accepted and return all-valid flags.
+    pub fn execute_nullable(
+        &self,
+        program: &KernelProgram,
+        batch: &Batch<'_>,
+        parameters: &Parameters,
+    ) -> Result<NullableF32, ExecutionError> {
+        self.require_output_type(program, DataType::F32)?;
+        let output = self.execute_bytes(program, batch, parameters)?;
+        let values: Vec<_> = output
+            .values
             .as_chunks::<4>()
             .0
             .iter()
-            .enumerate()
-            .map(|(index, b)| {
-                let value = u32::from_ne_bytes(*b);
-                if value > 1 {
-                    Err(ExecutionError::InvalidMaskValue { index, value })
-                } else {
-                    Ok(value)
-                }
-            })
-            .collect()
+            .map(|b| f32::from_ne_bytes(*b))
+            .collect();
+        let validity = match output.validity {
+            Some(bytes) => decode_validity(&bytes)?,
+            None => vec![1; values.len()],
+        };
+        Ok(NullableF32 { values, validity })
+    }
+
+    fn require_non_nullable(&self, program: &KernelProgram) -> Result<(), ExecutionError> {
+        if program.output_nullable() {
+            return Err(ExecutionError::NullableOutput);
+        }
+        Ok(())
     }
 
     fn require_output_type(
@@ -166,12 +186,17 @@ impl Executor {
         program: &KernelProgram,
         batch: &Batch<'_>,
         parameters: &Parameters,
-    ) -> Result<Bytes, ExecutionError> {
+    ) -> Result<OutputBytes, ExecutionError> {
         let layout = BindingLayout::new(program);
         let host = layout.bind_host(batch, parameters)?;
         let rows = host.extent().row_count();
         if rows == 0 {
-            return Ok(Bytes::from_bytes_vec(Vec::new()));
+            return Ok(OutputBytes {
+                values: Bytes::from_bytes_vec(Vec::new()),
+                validity: program
+                    .output_nullable()
+                    .then(|| Bytes::from_bytes_vec(Vec::new())),
+            });
         }
         let hw = &self.client.properties().hardware;
         // Each buffer plus the packed scalar/metadata info buffer needs a binding.
@@ -188,28 +213,43 @@ impl Executor {
             });
         }
         let mut buffers = Vec::with_capacity(layout.buffers().len());
-        for column in host.columns() {
-            let bytes: Vec<u8> = column
-                .iter()
-                .flat_map(|value| value.to_ne_bytes())
-                .collect();
-            let handle = self.client.create_from_slice(&bytes);
-            // SAFETY: the runtime owns the initialized allocation uploaded above;
-            // bytes represent scalar F32, aligned by the runtime allocator.
+        let mut output = None;
+        let mut output_validity = None;
+        for slot in layout.buffers() {
+            let handle = match slot.source() {
+                BufferSource::Column(id) => {
+                    let (column, _) = host.column_data(id);
+                    let bytes: Vec<u8> = column
+                        .iter()
+                        .flat_map(|value| value.to_ne_bytes())
+                        .collect();
+                    self.client.create_from_slice(&bytes)
+                }
+                BufferSource::ColumnValidity(id) => {
+                    let (_, validity) = host.column_data(id);
+                    let bytes: Vec<u8> = (0..rows as usize)
+                        .flat_map(|i| validity.map_or(1, |v| v[i]).to_ne_bytes())
+                        .collect();
+                    self.client.create_from_slice(&bytes)
+                }
+                BufferSource::Output => {
+                    let handle = self.client.empty(host.extent().byte_len());
+                    output = Some(handle.clone());
+                    handle
+                }
+                BufferSource::OutputValidity => {
+                    let handle = self.client.empty(host.extent().byte_len());
+                    output_validity = Some(handle.clone());
+                    handle
+                }
+            };
+            // SAFETY: input bytes come from initialized typed slices and checked
+            // validity. Outputs are distinct fresh write-only allocations. The
+            // emitter initializes both output planes for every in-range row.
             buffers.push(unsafe {
-                DeviceBuffer::from_raw_parts(handle, PhysicalType::F32, u64::from(rows))
+                DeviceBuffer::from_raw_parts(handle, slot.element_type(), u64::from(rows))
             });
         }
-        let output = self.client.empty(host.extent().byte_len());
-        // SAFETY: a fresh, runtime-aligned allocation of the exact required size.
-        // This layout's output is write-only; the emitter writes every logical row.
-        buffers.push(unsafe {
-            DeviceBuffer::from_raw_parts(
-                output.clone(),
-                layout.buffers().last().expect("output slot").element_type(),
-                u64::from(rows),
-            )
-        });
         let bound = layout.bind_device(&self.client, u64::from(rows), &buffers, parameters)?;
         let settings = self.settings();
         let kernel = ExpressionKernel::new(
@@ -228,23 +268,30 @@ impl Executor {
                 CubeCount::Static(cubes, 1, 1),
             )?;
         }
-        let bytes = self
-            .client
-            .read_one(output)
-            .map_err(ExecutionError::Backend)?;
-        if bytes.len() != host.extent().byte_len() {
-            return Err(ExecutionError::OutputLength {
-                expected: host.extent().byte_len(),
-                actual: bytes.len(),
-            });
-        }
-        Ok(bytes)
+        let read = |handle| {
+            let bytes = self
+                .client
+                .read_one(handle)
+                .map_err(ExecutionError::Backend)?;
+            if bytes.len() != host.extent().byte_len() {
+                return Err(ExecutionError::OutputLength {
+                    expected: host.extent().byte_len(),
+                    actual: bytes.len(),
+                });
+            }
+            Ok(bytes)
+        };
+        // No result is exposed unless every declared output has completed.
+        let values = read(output.expect("layout output"))?;
+        let validity = output_validity.map(read).transpose()?;
+        Ok(OutputBytes { values, validity })
     }
 }
 
 #[derive(Debug)]
 pub enum ExecutionError {
     Binding(BindingError),
+    NullableOutput,
     OutputType {
         expected: DataType,
         actual: DataType,
@@ -276,6 +323,7 @@ impl From<BindingError> for ExecutionError {
 impl fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::NullableOutput => f.write_str("nullable F32 output requires execute_nullable"),
             Self::OutputType { expected, actual } => {
                 write!(f, "expected {expected} output, program produces {actual}")
             }
@@ -296,6 +344,56 @@ impl fmt::Display for ExecutionError {
             }
         }
     }
+}
+
+struct OutputBytes {
+    values: Bytes,
+    validity: Option<Bytes>,
+}
+
+/// Owned F32 projection with one 0/1 validity flag per row.
+/// Invalid payloads are canonical +0; use iter() to observe SQL NULLs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NullableF32 {
+    values: Vec<f32>,
+    validity: Vec<u32>,
+}
+impl NullableF32 {
+    pub fn values(&self) -> &[f32] {
+        &self.values
+    }
+    pub fn validity(&self) -> &[u32] {
+        &self.validity
+    }
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = Option<f32>> + '_ {
+        self.values
+            .iter()
+            .zip(&self.validity)
+            .map(|(&value, &valid)| (valid == 1).then_some(value))
+    }
+}
+
+fn decode_validity(bytes: &[u8]) -> Result<Vec<u32>, ExecutionError> {
+    bytes
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .enumerate()
+        .map(|(index, b)| {
+            let value = u32::from_ne_bytes(*b);
+            if value > 1 {
+                Err(ExecutionError::InvalidMaskValue { index, value })
+            } else {
+                Ok(value)
+            }
+        })
+        .collect()
 }
 
 impl StdError for ExecutionError {

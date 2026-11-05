@@ -6,8 +6,8 @@ The canonical development directory is `/Users/devilhill/Codes/cuberel`.
 Product source, tests, configuration and documentation belong in this repository;
 temporary build directories may live under `/private/tmp`.
 
-The library builds and validates runtime expressions, lowers non-nullable `f32`
-arithmetic and boolean predicates to CubeCL IR, and executes on a selected CPU or native
+The library builds and validates runtime expressions, lowers nullable `f32`
+arithmetic and non-nullable boolean predicates to CubeCL IR, and executes on a selected CPU or native
 Metal client. No `#[cube]`, Rust source generation or runtime rustc invocation is
 used by this query path. SQL and Arrow integration are not yet implemented.
 The backend smoke example separately initializes a real device and round-trips
@@ -55,6 +55,23 @@ cargo test --locked --no-default-features --test expressions
 See [the expression API and semantics](docs/typed-expressions.md) for preparation
 limits and raw node graphs. See [device execution and its limits](docs/runtime-emitter.md)
 for IR construction, floating-point policy and the verification report.
+
+## Nullable F32 projection
+
+Declare nullable fields through `Schema::from_fields` and
+`Field::new("a", DataType::F32).with_nullable(true)`. Bind columns with
+`ColumnData::NullableF32 { values, validity }` (dense U32 0/1 flags), and nullable
+F32 parameters with `Some(value)` or `None::<f32>`. `execute_nullable` returns
+owned value/validity slices plus an iterator of `Option<f32>`.
+
+For `a * scale + bias`, `a=[1, NULL, 3]`, `scale=2`, `bias=1`, the result is
+`[3, NULL, 7]`. Rebinding scale to NULL produces all NULLs using the same kernel.
+See [nullable projection semantics and ABI](docs/nullable-projection.md).
+
+```sh
+cargo run --locked --example nullable_projection -- cpu
+cargo run --locked --no-default-features --features metal --example nullable_projection -- metal
+```
 
 ## Predicate masks
 

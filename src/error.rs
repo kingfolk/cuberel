@@ -37,6 +37,23 @@ pub enum Error {
         name: String,
         data_type: DataType,
     },
+    UnexpectedNull {
+        kind: InputKind,
+        name: String,
+    },
+    ValidityLengthMismatch {
+        name: String,
+        expected: usize,
+        actual: usize,
+    },
+    InvalidValidity {
+        name: String,
+        index: usize,
+        value: u32,
+    },
+    UnsupportedNullableOperation {
+        node: ExprId,
+    },
     EmptyExpression,
     InvalidRoot {
         root: ExprId,
@@ -91,6 +108,26 @@ impl fmt::Display for Error {
             } => write!(
                 f,
                 "{kind} {name:?} has unsupported type {data_type}; expected f32"
+            ),
+            Self::UnexpectedNull { kind, name } => {
+                write!(f, "non-nullable {kind} {name:?} contains NULL")
+            }
+            Self::ValidityLengthMismatch {
+                name,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "column {name:?} has {actual} validity flags; expected {expected}"
+            ),
+            Self::InvalidValidity { name, index, value } => write!(
+                f,
+                "column {name:?} validity row {index}: expected 0 or 1, got {value}"
+            ),
+            Self::UnsupportedNullableOperation { node } => write!(
+                f,
+                "nullable comparison at node {} is not supported yet",
+                node.index()
             ),
             Self::EmptyExpression => f.write_str("expression has no nodes"),
             Self::InvalidRoot { root, node_count } => write!(
