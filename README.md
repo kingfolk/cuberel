@@ -7,7 +7,7 @@ Product source, tests, configuration and documentation belong in this repository
 temporary build directories may live under `/private/tmp`.
 
 The library builds and validates runtime expressions, lowers nullable `f32`
-arithmetic and non-nullable boolean predicates to CubeCL IR, and executes on a selected CPU or native
+arithmetic and nullable boolean predicates to CubeCL IR, and executes on a selected CPU or native
 Metal client. No `#[cube]`, Rust source generation or runtime rustc invocation is
 used by this query path. SQL and Arrow integration are not yet implemented.
 The backend smoke example separately initializes a real device and round-trips
@@ -78,7 +78,10 @@ cargo run --locked --no-default-features --features metal --example nullable_pro
 Compare F32 expressions with `eq_expr`, `ne_expr`, `lt`, `le`, `gt`, `ge`;
 compose predicates with `and`, `or` and `!`. Execute a Bool program with
 `executor.execute_mask(&program, &batch, &parameters)` to obtain one U32 flag
-per input row (0 or 1), retaining row positions. F32 programs use `execute`.
+per input row (0 or 1), retaining row positions. True keeps a row; false and NULL
+produce 0. `execute_predicate` preserves three-valued Bool results through
+`NullableBool::iter()`. `.is_null()` tests either numeric or boolean expressions.
+F32 programs use `execute` or `execute_nullable`.
 
 For `(a * scale) > limit AND a < upper`, input `[1, 3, 5]` with parameters
 `scale=2`, `limit=4`, `upper=5` produces `[0, 1, 0]`. See
@@ -87,6 +90,15 @@ For `(a * scale) > limit AND a < upper`, input `[1, 3, 5]` with parameters
 ```sh
 cargo run --locked --example predicate_mask -- cpu
 cargo run --locked --no-default-features --features metal --example predicate_mask -- metal
+```
+
+For nullable `a=[1, NULL, 3]`, `a > 2` projects `[false, NULL, true]`, while its
+WHERE mask is `[0, 0, 1]`. `false AND NULL` is false, `true OR NULL` is true, and
+NOT preserves NULL. See [three-valued predicate rules and APIs](docs/three-valued-predicates.md).
+
+```sh
+cargo run --locked --example nullable_predicate -- cpu
+cargo run --locked --no-default-features --features metal --example nullable_predicate -- metal
 ```
 
 ## Kernel binding ABI

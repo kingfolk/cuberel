@@ -21,7 +21,8 @@ includes references in every validated arena node, even nodes unreachable from
 the root, matching preparation. Unused schema fields
 do not occupy slots. Input buffers precede the output planes. Inputs are read-only and outputs are
 write-only. ABI v3 adds dense U32 validity beside nullable F32 inputs and outputs;
-non-nullable Bool [predicate masks](predicates.md) retain U32 value output. See
+Bool [predicate values](three-valued-predicates.md) use U32 value output and
+add a U32 validity output for nullable roots. See
 [nullable projection ABI](nullable-projection.md) for exact ordering and contracts.
 Column names, parameter names and internal slot names are separate namespaces.
 

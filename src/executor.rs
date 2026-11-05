@@ -124,8 +124,8 @@ impl Executor {
             .collect())
     }
 
-    /// Execute a non-nullable predicate as a dense row-aligned mask.
-    /// Every entry is exactly 0 (false) or 1 (true); rows are not compacted.
+    /// Execute a Bool predicate with WHERE semantics as a dense row-aligned mask.
+    /// Only valid true keeps a row (1); false and NULL produce 0. No compaction.
     pub fn execute_mask(
         &self,
         program: &KernelProgram,
@@ -133,9 +133,13 @@ impl Executor {
         parameters: &Parameters,
     ) -> Result<Vec<u32>, ExecutionError> {
         self.require_output_type(program, DataType::Bool)?;
-        self.require_non_nullable(program)?;
-        let bytes = self.execute_bytes(program, batch, parameters)?.values;
-        decode_validity(&bytes)
+        let output = self.execute_bytes(program, batch, parameters)?;
+        // Unknown Bool payloads are already false on device. Check both output
+        // encodings without a host truth-table evaluation or another kernel.
+        if let Some(validity) = output.validity {
+            decode_validity(&validity)?;
+        }
+        decode_validity(&output.values)
     }
 
     /// Execute an F32 projection with dense 0/1 validity. Non-nullable
@@ -160,6 +164,24 @@ impl Executor {
             None => vec![1; values.len()],
         };
         Ok(NullableF32 { values, validity })
+    }
+
+    /// Execute a Bool projection, preserving true/false/NULL as value/validity.
+    /// Non-nullable Bool programs are accepted and return all-valid flags.
+    pub fn execute_predicate(
+        &self,
+        program: &KernelProgram,
+        batch: &Batch<'_>,
+        parameters: &Parameters,
+    ) -> Result<NullableBool, ExecutionError> {
+        self.require_output_type(program, DataType::Bool)?;
+        let output = self.execute_bytes(program, batch, parameters)?;
+        let values = decode_validity(&output.values)?;
+        let validity = match output.validity {
+            Some(bytes) => decode_validity(&bytes)?,
+            None => vec![1; values.len()],
+        };
+        Ok(NullableBool { values, validity })
     }
 
     fn require_non_nullable(&self, program: &KernelProgram) -> Result<(), ExecutionError> {
@@ -376,6 +398,34 @@ impl NullableF32 {
             .iter()
             .zip(&self.validity)
             .map(|(&value, &valid)| (valid == 1).then_some(value))
+    }
+}
+
+/// Owned Bool projection. Unknown payloads are canonical 0 (false).
+/// iter() preserves SQL unknown as None; execute_mask() applies WHERE semantics.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NullableBool {
+    values: Vec<u32>,
+    validity: Vec<u32>,
+}
+impl NullableBool {
+    pub fn values(&self) -> &[u32] {
+        &self.values
+    }
+    pub fn validity(&self) -> &[u32] {
+        &self.validity
+    }
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = Option<bool>> + '_ {
+        self.values
+            .iter()
+            .zip(&self.validity)
+            .map(|(&value, &valid)| (valid == 1).then_some(value == 1))
     }
 }
 

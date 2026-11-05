@@ -30,7 +30,7 @@ use cubecl::{
 use crate::{Comparison, DataType, ExprId, KernelProgram, ScalarOp, TypedExpr, abi::BindingLayout};
 
 // Change when emitted semantics or instruction policy changes.
-pub const CODEGEN_VERSION: u32 = 5;
+pub const CODEGEN_VERSION: u32 = 6;
 
 /// Structural identity for compilation and caching of an expression kernel.
 /// Dynamic values, handles, and row counts are absent.
@@ -86,6 +86,7 @@ impl ExpressionKernel {
                 ScalarOp::And(a, b) => ScalarOp::And(remapped[a.index()], remapped[b.index()]),
                 ScalarOp::Or(a, b) => ScalarOp::Or(remapped[a.index()], remapped[b.index()]),
                 ScalarOp::Not(a) => ScalarOp::Not(remapped[a.index()]),
+                ScalarOp::IsNull(a) => ScalarOp::IsNull(remapped[a.index()]),
                 leaf => leaf,
             };
             let canonical = node.with_op(op);
@@ -227,6 +228,8 @@ impl CubeKernel for ExpressionKernel {
                 ScalarOp::Not(a) => {
                     body.register_with_result(&BoolNotOp::new(body.ctx_mut(), values[a.index()]))
                 }
+                ScalarOp::IsNull(a) => body
+                    .register_with_result(&BoolNotOp::new(body.ctx_mut(), validities[a.index()])),
             };
             let valid = match node.op() {
                 ScalarOp::Column(id) if node.is_nullable() => {
@@ -248,18 +251,66 @@ impl CubeKernel for ExpressionKernel {
                         .expect("nullable parameter validity");
                     body.register_with_result(&CastOp::new(body.ctx_mut(), bool_ty, raw))
                 }
-                ScalarOp::Add(a, b) | ScalarOp::Mul(a, b) if node.is_nullable() => body
-                    .register_with_result(&BoolAndOp::new(
+                ScalarOp::Add(a, b) | ScalarOp::Mul(a, b) | ScalarOp::Compare(_, a, b)
+                    if node.is_nullable() =>
+                {
+                    body.register_with_result(&BoolAndOp::new(
                         body.ctx_mut(),
                         validities[a.index()],
                         validities[b.index()],
-                    )),
+                    ))
+                }
+                ScalarOp::And(a, b) | ScalarOp::Or(a, b) if node.is_nullable() => {
+                    // Payloads of unknown Bool operands are canonical false.
+                    // AND is known when true or either operand is known false.
+                    // OR is known when true or both operands are known false.
+                    let not_a = body
+                        .register_with_result(&BoolNotOp::new(body.ctx_mut(), values[a.index()]));
+                    let not_b = body
+                        .register_with_result(&BoolNotOp::new(body.ctx_mut(), values[b.index()]));
+                    let a_false = body.register_with_result(&BoolAndOp::new(
+                        body.ctx_mut(),
+                        validities[a.index()],
+                        not_a,
+                    ));
+                    let b_false = body.register_with_result(&BoolAndOp::new(
+                        body.ctx_mut(),
+                        validities[b.index()],
+                        not_b,
+                    ));
+                    let known_false = match node.op() {
+                        ScalarOp::And(..) => body.register_with_result(&BoolOrOp::new(
+                            body.ctx_mut(),
+                            a_false,
+                            b_false,
+                        )),
+                        ScalarOp::Or(..) => body.register_with_result(&BoolAndOp::new(
+                            body.ctx_mut(),
+                            a_false,
+                            b_false,
+                        )),
+                        _ => unreachable!(),
+                    };
+                    body.register_with_result(&BoolOrOp::new(body.ctx_mut(), value, known_false))
+                }
+                ScalarOp::Not(a) if node.is_nullable() => validities[a.index()],
                 _ => valid_true,
             };
-            // Every payload load is initialized. Select canonicalizes invalid
-            // values to +0, including leaves before later arithmetic uses them.
+            // Every payload load is initialized. Canonicalize invalid F32 to +0
+            // and invalid Bool to false before consumers use them.
             let value = if node.is_nullable() {
-                body.register_with_result(&SelectOp::new(body.ctx_mut(), valid, value, zero))
+                match node.data_type() {
+                    DataType::F32 => body.register_with_result(&SelectOp::new(
+                        body.ctx_mut(),
+                        valid,
+                        value,
+                        zero,
+                    )),
+                    DataType::Bool => {
+                        body.register_with_result(&BoolAndOp::new(body.ctx_mut(), valid, value))
+                    }
+                    DataType::I32 => unreachable!("prepared type"),
+                }
             } else {
                 value
             };

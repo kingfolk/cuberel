@@ -51,9 +51,6 @@ pub enum Error {
         index: usize,
         value: u32,
     },
-    UnsupportedNullableOperation {
-        node: ExprId,
-    },
     EmptyExpression,
     InvalidRoot {
         root: ExprId,
@@ -123,11 +120,6 @@ impl fmt::Display for Error {
             Self::InvalidValidity { name, index, value } => write!(
                 f,
                 "column {name:?} validity row {index}: expected 0 or 1, got {value}"
-            ),
-            Self::UnsupportedNullableOperation { node } => write!(
-                f,
-                "nullable comparison at node {} is not supported yet",
-                node.index()
             ),
             Self::EmptyExpression => f.write_str("expression has no nodes"),
             Self::InvalidRoot { root, node_count } => write!(

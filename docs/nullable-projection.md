@@ -47,7 +47,8 @@ even when the row count is zero, after which no buffers are allocated or launche
 `execute_nullable` accepts F32 programs of either static nullability. For a
 non-nullable root it synthesizes all-valid host flags and uses the existing single
 device output. `execute` rejects a nullable root with `NullableOutput`, preventing
-validity loss. `execute_mask` retains its non-nullable Bool contract. Result fields
+validity loss. [Nullable predicate APIs](three-valued-predicates.md) now preserve
+Bool validity with `execute_predicate`, and apply WHERE semantics with `execute_mask`. Result fields
 are private and exposed as immutable slices or an `ExactSizeIterator<Option<f32>>`.
 
 NULL is determined only by validity. A valid NaN remains a valid NaN. An invalid
@@ -95,17 +96,16 @@ any result; failure from either read returns an error. Readback is synchronous
 and currently uses two read calls for nullable outputs. There is no device-resident
 result or async interface, and this feature makes no performance improvement claim.
 
-Codegen version 5 and ABI version 3 invalidate incompatible artifacts. Static
+ABI version 3 describes value/validity planes; current codegen version 6 adds
+nullable predicate semantics without changing their physical representation. Static
 nullability participates in typed nodes and binding identity; dynamic flags,
 NULL/Some scalar state, row counts and addresses do not. Duplicate pure nullable
 subexpressions retain the existing normalized DAG identity policy.
 
 ## Boundaries and validation
 
-Nullable comparisons are explicitly rejected with `UnsupportedNullableOperation`
-during preparation, including unreachable comparison nodes. Existing non-nullable
-predicates still work. IS NULL, nullable Bool/three-valued logic and WHERE keep
-semantics are the next feature. Arrow bitmap/offset conversion and integer
+Nullable comparisons, IS NULL, nullable Bool/three-valued logic and WHERE keep
+semantics are now implemented by [nullable predicates](three-valued-predicates.md). Arrow bitmap/offset conversion and integer
 arithmetic also remain later work. Validity is currently dense U32, not an Arrow
 bitmap, and no host expression interpreter is introduced.
 

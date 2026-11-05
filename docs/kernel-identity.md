@@ -5,7 +5,8 @@ The implementation was merged in [PR #5](https://github.com/kingfolk/cuberel/pul
 [Predicate support](predicates.md) extends these identities to boolean operations
 and typed mask outputs. [Nullable projection](nullable-projection.md) adds
 static node nullability and separate validity slots; dynamic null flags never
-specialize the key.
+specialize the key. [Three-valued predicates](three-valued-predicates.md) adds
+IsNull operand normalization and nullable Bool artifacts under codegen v6.
 
 ## Inspecting the key
 
@@ -22,7 +23,7 @@ not initialize a launcher or invoke define. ExpressionIdentity is an owned,
 inspectable snapshot, not a caller-supplied key that can override execution.
 It includes:
 
-- Codegen version (currently 5) and normalization format version (currently 1).
+- Codegen version (currently 6) and normalization format version (currently 1).
 - Normalized typed nodes and the remapped output root.
 - BindingLayout, including ABI version, physical types and address width.
 - Full executor KernelSettings, including dimensions and execution mode.
