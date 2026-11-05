@@ -11,9 +11,14 @@
 //! Backend features:
 //! - `cpu` (default): CubeCL's LLVM-based CPU runtime.
 //! - `metal`: CubeCL's native Metal runtime on Apple platforms.
+//! - `arrow`: Arrow 60 host array/RecordBatch adapters, independent of runtimes.
 //!
 //! Both features can be enabled together. Backend selection must be explicit in
 //! examples and tests, so a missing GPU cannot silently fall back to the CPU.
+
+/// Host Arrow 60 adapters, available with the `arrow` feature.
+#[cfg(feature = "arrow")]
+pub mod arrow;
 
 pub mod abi;
 pub mod cubecl_abi;

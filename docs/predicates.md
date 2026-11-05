@@ -84,8 +84,8 @@ reuses the artifact after parameters, input addresses and row counts change.
 
 The mask itself has no NULL flags: false and NULL both reject a row. Nullable
 predicates, SQL three-valued logic and IS NULL are now implemented separately in
-[three-valued predicates](three-valued-predicates.md). Arrow arrays/offsets, integer
-expressions, row compaction and relation operators remain later features. No host expression interpreter is introduced.
+[three-valued predicates](three-valued-predicates.md). The optional [Arrow adapter](arrow-adapter.md) now handles array/bitmap offsets.
+Integer expressions, row compaction and relation operators remain later features. No host expression interpreter is introduced.
 
 Six new tests cover mixed-type preparation, invalid/unreachable operands,
 unary/binary reference and depth limits, output descriptor checks, and actual

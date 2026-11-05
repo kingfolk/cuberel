@@ -105,8 +105,8 @@ subexpressions retain the existing normalized DAG identity policy.
 ## Boundaries and validation
 
 Nullable comparisons, IS NULL, nullable Bool/three-valued logic and WHERE keep
-semantics are now implemented by [nullable predicates](three-valued-predicates.md). Arrow bitmap/offset conversion and integer
-arithmetic also remain later work. Validity is currently dense U32, not an Arrow
+semantics are now implemented by [nullable predicates](three-valued-predicates.md). The optional [Arrow adapter](arrow-adapter.md) now handles F32 bitmap/offset
+conversion; integer arithmetic remains later work. Validity is currently dense U32, not an Arrow
 bitmap, and no host expression interpreter is introduced.
 
 Seven tests cover schema/nullability inference and input validation, ABI planes,

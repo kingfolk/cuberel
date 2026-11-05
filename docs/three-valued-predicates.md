@@ -108,7 +108,8 @@ if either read fails. The existing synchronous upload/readback model is unchange
 before upload. Empty invocations still validate input declarations and parameters,
 then return empty output without an invalid zero-grid launch. Operators are pure
 and evaluate eagerly; this does not add a short-circuit/fallible-function contract.
-Arrow bitmaps/offsets, host Bool bindings and compacted selection remain later work.
+The optional [Arrow adapter](arrow-adapter.md) now handles host F32 arrays and
+bitmap/offset conversion. Host Bool bindings and compacted selection remain later work.
 
 ## Verification
 
