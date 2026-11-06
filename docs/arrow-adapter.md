@@ -3,13 +3,18 @@
 Enable `arrow` to use Arrow input/output with the existing runtime expression
 compiler. `arrow-array`, `arrow-buffer` and `arrow-schema` are pinned to 60.0.0.
 This optional feature is independent of CPU/Metal runtime features and is off by
-default. The CubeCL revision, binding ABI v3 and codegen v6 remain unchanged.
+default. The CubeCL revision remains unchanged. [Checked I32](checked-i32.md) extends
+this adapter under binding ABI v4 and codegen v8.
 
 ```toml
 cuberel = { path = "...", features = ["arrow"] }
 arrow-array = "=60.0.0"
 arrow-schema = "=60.0.0"
 ```
+
+I32 columns, nullable scalar bindings and Int32Array output are now supported;
+see [checked I32 semantics](checked-i32.md). Numeric field types must match exactly.
+An overflowing I32 expression returns an error rather than an Arrow array.
 
 ## Workflow
 
@@ -40,7 +45,7 @@ sliced RecordBatch. Parameters keep the existing named `Parameters` API, includi
 ## Names, types and nullability
 
 `schema_from_arrow` retains field order, exact names and nullability, while accepting
-only Float32 fields. It validates duplicates and empty names through Schema. Other
+only Float32 and Int32 fields. It validates duplicates and empty names through Schema. Other
 Arrow types return `ArrowAdapterError::UnsupportedType`; metadata and extension
 semantics are not translated into query operations.
 
@@ -50,7 +55,7 @@ Executor convenience methods select only referenced columns by exact name, inclu
 references in unreachable arena nodes. Unreferenced types do not need conversion.
 Duplicate/empty RecordBatch field names are rejected even when unreferenced, so a
 name can never silently choose the first of several columns. Missing names and
-referenced non-Float32 columns are errors. Input array order need not match the
+referenced unsupported or mismatched numeric columns are errors. Input array order need not match the
 program schema order.
 
 Actual NULLs in a non-nullable Cuberel field fail before device work. A nullable
@@ -72,7 +77,7 @@ let batch = adapter.as_batch()?;
 let result = executor.execute_nullable(&program, &batch, &parameters)?.into_arrow();
 ```
 
-`from_columns` accepts named Float32Array references directly and validates all
+`from_columns` accepts named Float32Array/Int32Array references as `&dyn Array` and validates all
 supplied lengths/names, including extras. An empty column list plus explicit row
 count supports parameter-only programs. Existing U32 row/byte bounds are checked
 before bitmap expansion, without allocating large buffers to test the boundary.

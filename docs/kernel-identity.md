@@ -23,7 +23,7 @@ not initialize a launcher or invoke define. ExpressionIdentity is an owned,
 inspectable snapshot, not a caller-supplied key that can override execution.
 It includes:
 
-- Codegen version (currently 6) and normalization format version (currently 1).
+- Codegen version (currently 8) and normalization format version (currently 1).
 - Normalized typed nodes and the remapped output root.
 - BindingLayout, including ABI version, physical types and address width.
 - Full executor KernelSettings, including dimensions and execution mode.
@@ -138,3 +138,6 @@ completion error rather than treating that log as successful execution.
 At Milestone 01 completion all listed checks passed: 34 combined integration tests (zero ignored), 22
 no-runtime tests, Clippy/rustdoc with warnings denied, formatting and diff checks.
 Milestone 01 is verified within its stated CPU/native Metal scope.
+
+Current numeric extension: [checked I32](checked-i32.md) adds typed payloads and
+a per-row overflow error plane; I32 and F32 operands do not implicitly mix.

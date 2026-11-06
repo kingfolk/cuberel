@@ -103,7 +103,10 @@ fn host_binding_orders_same_type_scalars_and_snapshots_values() {
     assert_eq!(bound.layout(), &layout);
     assert_eq!(bound.extent().row_count(), 3);
     assert_eq!(bound.extent().byte_len(), 12);
-    assert_eq!(bound.columns(), &[b.as_slice(), a.as_slice()]);
+    assert_eq!(
+        bound.columns(),
+        &[ColumnData::F32(b.as_slice()), ColumnData::F32(a.as_slice())]
+    );
     assert_eq!(
         bound.scalars(),
         &[

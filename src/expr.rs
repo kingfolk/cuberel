@@ -18,7 +18,7 @@ impl ExprId {
     }
 }
 
-/// F32 comparisons with IEEE semantics: unordered comparisons are false except
+/// Same-type numeric comparisons. F32 uses IEEE semantics: unordered comparisons are false except
 /// NotEqual, which is true. NaN is a floating-point value, not SQL NULL.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Comparison {
@@ -82,7 +82,7 @@ impl Expr {
         self.root
     }
 
-    /// Compare F32 expressions. Use eq_expr/ne_expr to distinguish query
+    /// Compare same-type F32 or I32 expressions. Use eq_expr/ne_expr to distinguish query
     /// construction from Rust's structural PartialEq implementation.
     pub fn eq_expr(self, rhs: Self) -> Self {
         self.compare(rhs, Comparison::Equal)
@@ -109,7 +109,7 @@ impl Expr {
         self.combine(rhs, ExprNode::Or)
     }
 
-    /// Construct a non-nullable Bool expression testing F32 or Bool validity.
+    /// Construct a non-nullable Bool expression testing numeric or Bool validity.
     pub fn is_null(self) -> Self {
         self.unary(ExprNode::IsNull)
     }
@@ -240,9 +240,24 @@ pub struct KernelProgram {
     schema: Arc<Schema>,
     nodes: Arc<[TypedExpr]>,
     root: ExprId,
+    reachable: Arc<[bool]>,
 }
 
 impl KernelProgram {
+    pub(crate) fn reachable(&self) -> &[bool] {
+        &self.reachable
+    }
+    /// Whether the output depends on checked I32 add/mul (requires an error plane).
+    pub fn has_integer_arithmetic(&self) -> bool {
+        self.nodes
+            .iter()
+            .zip(self.reachable.iter())
+            .any(|(node, &used)| {
+                used && node.data_type == DataType::I32
+                    && matches!(node.op, ScalarOp::Add(..) | ScalarOp::Mul(..))
+            })
+    }
+
     pub fn schema(&self) -> &Schema {
         &self.schema
     }
@@ -265,7 +280,7 @@ pub fn prepare(expr: &Expr, schema: &Schema) -> Result<KernelProgram, Error> {
 }
 
 /// Validate the entire topologically ordered arena and resolve names to IDs.
-/// Only referenced input declarations must be F32. No reassociation, constant
+/// Referenced inputs must be F32 or I32; operands must match exactly. No reassociation, constant
 /// folding or device compilation is performed.
 pub fn prepare_with_limits(
     expr: &Expr,
@@ -288,7 +303,7 @@ pub fn prepare_with_limits(
             node_count,
         });
     }
-    let mut nodes = Vec::with_capacity(node_count);
+    let mut nodes: Vec<TypedExpr> = Vec::with_capacity(node_count);
     let mut depths = Vec::<usize>::with_capacity(node_count);
     for (index, node) in expr.nodes.iter().enumerate() {
         let node_id = ExprId(index);
@@ -299,8 +314,9 @@ pub fn prepare_with_limits(
                     kind,
                     name: name.clone(),
                 })?;
-                require_f32(kind, name, schema.columns()[id.index()].data_type())?;
-                (ScalarOp::Column(id), 1, DataType::F32)
+                let ty = schema.columns()[id.index()].data_type();
+                require_numeric(kind, name, ty)?;
+                (ScalarOp::Column(id), 1, ty)
             }
             ExprNode::Parameter(name) => {
                 let kind = InputKind::Parameter;
@@ -310,8 +326,9 @@ pub fn prepare_with_limits(
                         kind,
                         name: name.clone(),
                     })?;
-                require_f32(kind, name, schema.parameters()[id.index()].data_type())?;
-                (ScalarOp::Parameter(id), 1, DataType::F32)
+                let ty = schema.parameters()[id.index()].data_type();
+                require_numeric(kind, name, ty)?;
+                (ScalarOp::Parameter(id), 1, ty)
             }
             ExprNode::Add(a, b)
             | ExprNode::Mul(a, b)
@@ -320,15 +337,32 @@ pub fn prepare_with_limits(
             | ExprNode::Or(a, b) => {
                 let expected = match node {
                     ExprNode::And(..) | ExprNode::Or(..) => DataType::Bool,
-                    _ => DataType::F32,
+                    _ => {
+                        let ty = nodes
+                            .get(a.index())
+                            .ok_or(Error::InvalidReference {
+                                node: node_id,
+                                operand: *a,
+                            })?
+                            .data_type;
+                        if ty == DataType::Bool {
+                            return Err(Error::OperandTypeMismatch {
+                                node: node_id,
+                                operand: *a,
+                                expected: DataType::F32,
+                                actual: ty,
+                            });
+                        }
+                        ty
+                    }
                 };
                 for &operand in [a, b] {
                     validate_operand(&nodes, node_id, operand, expected)?;
                 }
                 let depth = depths[a.0].max(depths[b.0]) + 1;
                 let (op, ty) = match node {
-                    ExprNode::Add(..) => (ScalarOp::Add(*a, *b), DataType::F32),
-                    ExprNode::Mul(..) => (ScalarOp::Mul(*a, *b), DataType::F32),
+                    ExprNode::Add(..) => (ScalarOp::Add(*a, *b), expected),
+                    ExprNode::Mul(..) => (ScalarOp::Mul(*a, *b), expected),
                     ExprNode::Compare(cmp, ..) => (ScalarOp::Compare(*cmp, *a, *b), DataType::Bool),
                     ExprNode::And(..) => (ScalarOp::And(*a, *b), DataType::Bool),
                     ExprNode::Or(..) => (ScalarOp::Or(*a, *b), DataType::Bool),
@@ -375,15 +409,35 @@ pub fn prepare_with_limits(
         });
         depths.push(depth);
     }
+    let mut reachable = vec![false; nodes.len()];
+    reachable[expr.root.index()] = true;
+    for index in (0..nodes.len()).rev() {
+        if !reachable[index] {
+            continue;
+        }
+        match nodes[index].op {
+            ScalarOp::Add(a, b)
+            | ScalarOp::Mul(a, b)
+            | ScalarOp::Compare(_, a, b)
+            | ScalarOp::And(a, b)
+            | ScalarOp::Or(a, b) => {
+                reachable[a.index()] = true;
+                reachable[b.index()] = true;
+            }
+            ScalarOp::Not(a) | ScalarOp::IsNull(a) => reachable[a.index()] = true,
+            _ => {}
+        }
+    }
     Ok(KernelProgram {
+        reachable: reachable.into(),
         schema: Arc::new(schema.clone()),
         nodes: nodes.into(),
         root: expr.root,
     })
 }
 
-fn require_f32(kind: InputKind, name: &str, data_type: DataType) -> Result<(), Error> {
-    if data_type != DataType::F32 {
+fn require_numeric(kind: InputKind, name: &str, data_type: DataType) -> Result<(), Error> {
+    if !matches!(data_type, DataType::F32 | DataType::I32) {
         return Err(Error::UnsupportedType {
             kind,
             name: name.into(),

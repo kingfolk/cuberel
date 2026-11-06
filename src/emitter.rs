@@ -8,29 +8,38 @@ use std::{
 
 use cubecl::{
     ir::{
-        Builtin, FloatKind, OpInserter, UIntKind,
+        Builtin, ConstantValue, FloatKind, IntKind, OpInserter, UIntKind,
         attributes::{BoolAttr, FloatAttr},
         dialect::{
             branch::{IfOp, ReturnOp},
             cmp::{
                 FEqualOp, FGreaterThanOp, FGreaterThanOrEqualOp, FLessThanOp, FLessThanOrEqualOp,
-                FNotEqualOp, ULessThanOp,
+                FNotEqualOp, IEqualOp, INotEqualOp, SGreaterThanOp, SGreaterThanOrEqualOp,
+                SLessThanOp, SLessThanOrEqualOp, UGreaterThanOp, ULessThanOp,
             },
-            general::{BoolAndOp, BoolNotOp, BoolOrOp, CastOp, ReadBuiltinOp, SelectOp},
-            math::{FMulOp, FmaOp},
+            general::{
+                BoolAndOp, BoolNotOp, BoolOrOp, CastOp, ReadBuiltinOp, ReinterpretCastOp, SelectOp,
+            },
+            math::{FMulOp, FmaOp, IAddOp, IMulOp, ISubOp, UDivOp},
             memory::{IndexOp, LoadOp, StoreOp},
         },
-        pliron::{builtin::ops::ConstantOp, op::Op, operation::verify_operation, value::Value},
+        pliron::{
+            builtin::{attributes::IntegerAttr, ops::ConstantOp},
+            op::Op,
+            operation::verify_operation,
+            value::Value,
+        },
     },
     prelude::{
         Client, CubeKernel, ElemType, KernelDefinition, KernelId, KernelMetadata, KernelSettings,
+        Scope,
     },
 };
 
 use crate::{Comparison, DataType, ExprId, KernelProgram, ScalarOp, TypedExpr, abi::BindingLayout};
 
 // Change when emitted semantics or instruction policy changes.
-pub const CODEGEN_VERSION: u32 = 6;
+pub const CODEGEN_VERSION: u32 = 8;
 
 /// Structural identity for compilation and caching of an expression kernel.
 /// Dynamic values, handles, and row counts are absent.
@@ -145,6 +154,9 @@ impl CubeKernel for ExpressionKernel {
         let zero = scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(zero)));
         let valid_true =
             scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(BoolAttr(true))));
+        let int_zero = literal(scope, ConstantValue::Int(0), ElemType::Int(IntKind::I32));
+        let mut overflow_any = scope
+            .register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(BoolAttr(false))));
         let bool_ty = ElemType::Bool.to_type(scope.ctx());
         let index_ty = ElemType::Index.to_type(scope.ctx());
         let index = scope.register_with_result(&ReadBuiltinOp::new(
@@ -163,7 +175,8 @@ impl CubeKernel for ExpressionKernel {
         let mut values: Vec<Value> = Vec::with_capacity(self.program.nodes().len());
         // This match runs once while constructing IR, not once per row on a device.
         // Arena order preserves DAG sharing and the original arithmetic grouping.
-        for node in self.program.nodes() {
+        for (node_index, node) in self.program.nodes().iter().enumerate() {
+            let mut overflow = None;
             let value = match node.op() {
                 ScalarOp::Column(id) => {
                     let buffer = declaration.column(id).expect("prepared column in layout");
@@ -182,6 +195,16 @@ impl CubeKernel for ExpressionKernel {
                 // fp_math_mode. fma(1,a,b) is exactly one rounded addition
                 // (1*a is exact), including signed zeros. It avoids that
                 // pattern and never fuses arithmetic across expression nodes.
+                ScalarOp::Add(a, b) | ScalarOp::Mul(a, b) if node.data_type() == DataType::I32 => {
+                    let (value, flag) = checked_i32(
+                        &body,
+                        values[a.index()],
+                        values[b.index()],
+                        matches!(node.op(), ScalarOp::Mul(..)),
+                    );
+                    overflow = Some(flag);
+                    value
+                }
                 ScalarOp::Add(a, b) => body.register_with_result(&FmaOp::new(
                     body.ctx_mut(),
                     one,
@@ -194,25 +217,48 @@ impl CubeKernel for ExpressionKernel {
                     values[b.index()],
                 )),
                 ScalarOp::Compare(comparison, a, b) => {
+                    let integer = self.program.nodes()[a.index()].data_type() == DataType::I32;
                     let (a, b) = (values[a.index()], values[b.index()]);
-                    match comparison {
-                        Comparison::Equal => {
-                            body.register_with_result(&FEqualOp::new(body.ctx_mut(), a, b))
+                    if integer {
+                        match comparison {
+                            Comparison::Equal => {
+                                body.register_with_result(&IEqualOp::new(body.ctx_mut(), a, b))
+                            }
+                            Comparison::NotEqual => {
+                                body.register_with_result(&INotEqualOp::new(body.ctx_mut(), a, b))
+                            }
+                            Comparison::LessThan => {
+                                body.register_with_result(&SLessThanOp::new(body.ctx_mut(), a, b))
+                            }
+                            Comparison::LessThanOrEqual => body.register_with_result(
+                                &SLessThanOrEqualOp::new(body.ctx_mut(), a, b),
+                            ),
+                            Comparison::GreaterThan => body
+                                .register_with_result(&SGreaterThanOp::new(body.ctx_mut(), a, b)),
+                            Comparison::GreaterThanOrEqual => body.register_with_result(
+                                &SGreaterThanOrEqualOp::new(body.ctx_mut(), a, b),
+                            ),
                         }
-                        Comparison::NotEqual => {
-                            body.register_with_result(&FNotEqualOp::new(body.ctx_mut(), a, b))
+                    } else {
+                        match comparison {
+                            Comparison::Equal => {
+                                body.register_with_result(&FEqualOp::new(body.ctx_mut(), a, b))
+                            }
+                            Comparison::NotEqual => {
+                                body.register_with_result(&FNotEqualOp::new(body.ctx_mut(), a, b))
+                            }
+                            Comparison::LessThan => {
+                                body.register_with_result(&FLessThanOp::new(body.ctx_mut(), a, b))
+                            }
+                            Comparison::LessThanOrEqual => body.register_with_result(
+                                &FLessThanOrEqualOp::new(body.ctx_mut(), a, b),
+                            ),
+                            Comparison::GreaterThan => body
+                                .register_with_result(&FGreaterThanOp::new(body.ctx_mut(), a, b)),
+                            Comparison::GreaterThanOrEqual => body.register_with_result(
+                                &FGreaterThanOrEqualOp::new(body.ctx_mut(), a, b),
+                            ),
                         }
-                        Comparison::LessThan => {
-                            body.register_with_result(&FLessThanOp::new(body.ctx_mut(), a, b))
-                        }
-                        Comparison::LessThanOrEqual => body
-                            .register_with_result(&FLessThanOrEqualOp::new(body.ctx_mut(), a, b)),
-                        Comparison::GreaterThan => {
-                            body.register_with_result(&FGreaterThanOp::new(body.ctx_mut(), a, b))
-                        }
-                        Comparison::GreaterThanOrEqual => body.register_with_result(
-                            &FGreaterThanOrEqualOp::new(body.ctx_mut(), a, b),
-                        ),
                     }
                 }
                 ScalarOp::And(a, b) => body.register_with_result(&BoolAndOp::new(
@@ -309,11 +355,23 @@ impl CubeKernel for ExpressionKernel {
                     DataType::Bool => {
                         body.register_with_result(&BoolAndOp::new(body.ctx_mut(), valid, value))
                     }
-                    DataType::I32 => unreachable!("prepared type"),
+                    DataType::I32 => body.register_with_result(&SelectOp::new(
+                        body.ctx_mut(),
+                        valid,
+                        value,
+                        int_zero,
+                    )),
                 }
             } else {
                 value
             };
+            if self.program.reachable()[node_index]
+                && let Some(flag) = overflow
+            {
+                let flag = body.register_with_result(&BoolAndOp::new(body.ctx_mut(), valid, flag));
+                overflow_any =
+                    body.register_with_result(&BoolOrOp::new(body.ctx_mut(), overflow_any, flag));
+            }
             validities.push(valid);
             values.push(value);
         }
@@ -348,6 +406,17 @@ impl CubeKernel for ExpressionKernel {
             ));
             body.register(&StoreOp::new(body.ctx_mut(), ptr, valid));
         }
+        if let Some(buffer) = declaration.output_error() {
+            let ptr = body.register_with_result(&IndexOp::maybe_checked(
+                body.ctx_mut(),
+                buffer,
+                index,
+                true,
+            ));
+            let ty = ElemType::UInt(UIntKind::U32).to_type(body.ctx());
+            let flag = body.register_with_result(&CastOp::new(body.ctx_mut(), ty, overflow_any));
+            body.register(&StoreOp::new(body.ctx_mut(), ptr, flag));
+        }
         body.terminate_yield();
         let other =
             scope.branch_child(OpInserter::new_at_block_end(branch.else_block(scope.ctx())));
@@ -363,4 +432,83 @@ impl CubeKernel for ExpressionKernel {
         // the output read in Executor observes that failure instead of stale data.
         declaration.build()
     }
+}
+
+fn literal(scope: &Scope, value: ConstantValue, ty: ElemType) -> Value {
+    let attribute = value.as_attribute(scope.ctx(), ty);
+    scope.register_with_result(&ConstantOp::new(
+        scope.ctx_mut(),
+        Box::new(
+            attribute
+                .downcast_ref::<IntegerAttr>()
+                .expect("integer literal")
+                .clone(),
+        ),
+    ))
+}
+
+// All low-word arithmetic is U32 modulo 2^32. No signed overflow, I64,
+// signed division, zero division or host-side expression evaluation is used.
+fn checked_i32(scope: &Scope, a: Value, b: Value, multiply: bool) -> (Value, Value) {
+    let u32_ty = ElemType::UInt(UIntKind::U32).to_type(scope.ctx());
+    let i32_ty = ElemType::Int(IntKind::I32).to_type(scope.ctx());
+    let zero = literal(scope, ConstantValue::UInt(0), UIntKind::U32.into());
+    let int_zero = literal(scope, ConstantValue::Int(0), IntKind::I32.into());
+    let ua = scope.register_with_result(&ReinterpretCastOp::new(scope.ctx_mut(), u32_ty, a));
+    let ub = scope.register_with_result(&ReinterpretCastOp::new(scope.ctx_mut(), u32_ty, b));
+    let low = if multiply {
+        scope.register_with_result(&IMulOp::new(scope.ctx_mut(), ua, ub))
+    } else {
+        scope.register_with_result(&IAddOp::new(scope.ctx_mut(), ua, ub))
+    };
+    let result = scope.register_with_result(&ReinterpretCastOp::new(scope.ctx_mut(), i32_ty, low));
+    let neg_a = scope.register_with_result(&SLessThanOp::new(scope.ctx_mut(), a, int_zero));
+    let neg_b = scope.register_with_result(&SLessThanOp::new(scope.ctx_mut(), b, int_zero));
+    let same_sign = bool_equal(scope, neg_a, neg_b);
+    let overflow = if multiply {
+        let neg_ua = scope.register_with_result(&ISubOp::new(scope.ctx_mut(), zero, ua));
+        let neg_ub = scope.register_with_result(&ISubOp::new(scope.ctx_mut(), zero, ub));
+        let magnitude_a =
+            scope.register_with_result(&SelectOp::new(scope.ctx_mut(), neg_a, neg_ua, ua));
+        let magnitude_b =
+            scope.register_with_result(&SelectOp::new(scope.ctx_mut(), neg_b, neg_ub, ub));
+        let positive_limit = literal(scope, ConstantValue::UInt(2147483647), UIntKind::U32.into());
+        let negative_limit = literal(scope, ConstantValue::UInt(2147483648), UIntKind::U32.into());
+        let limit = scope.register_with_result(&SelectOp::new(
+            scope.ctx_mut(),
+            same_sign,
+            positive_limit,
+            negative_limit,
+        ));
+        let one = literal(scope, ConstantValue::UInt(1), UIntKind::U32.into());
+        let b_zero = scope.register_with_result(&IEqualOp::new(scope.ctx_mut(), magnitude_b, zero));
+        let denominator =
+            scope.register_with_result(&SelectOp::new(scope.ctx_mut(), b_zero, one, magnitude_b));
+        let quotient =
+            scope.register_with_result(&UDivOp::new(scope.ctx_mut(), limit, denominator));
+        let too_large = scope.register_with_result(&UGreaterThanOp::new(
+            scope.ctx_mut(),
+            magnitude_a,
+            quotient,
+        ));
+        let b_nonzero = scope.register_with_result(&BoolNotOp::new(scope.ctx_mut(), b_zero));
+        scope.register_with_result(&BoolAndOp::new(scope.ctx_mut(), too_large, b_nonzero))
+    } else {
+        let negative_result =
+            scope.register_with_result(&SLessThanOp::new(scope.ctx_mut(), result, int_zero));
+        let same_result_sign = bool_equal(scope, neg_a, negative_result);
+        let changed_sign =
+            scope.register_with_result(&BoolNotOp::new(scope.ctx_mut(), same_result_sign));
+        scope.register_with_result(&BoolAndOp::new(scope.ctx_mut(), same_sign, changed_sign))
+    };
+    (result, overflow)
+}
+
+// Pinned Metal cannot emit cmp.bool_equal; equivalent supported Bool ops.
+fn bool_equal(scope: &Scope, a: Value, b: Value) -> Value {
+    let both = scope.register_with_result(&BoolAndOp::new(scope.ctx_mut(), a, b));
+    let na = scope.register_with_result(&BoolNotOp::new(scope.ctx_mut(), a));
+    let nb = scope.register_with_result(&BoolNotOp::new(scope.ctx_mut(), b));
+    let neither = scope.register_with_result(&BoolAndOp::new(scope.ctx_mut(), na, nb));
+    scope.register_with_result(&BoolOrOp::new(scope.ctx_mut(), both, neither))
 }

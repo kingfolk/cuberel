@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::{DataType, Error, InputKind};
 
 /// Borrowed initialized host columns; this is not an Arrow or device buffer.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ColumnData<'a> {
     F32(&'a [f32]),
     /// Dense 0/1 validity, one initialized payload per row (including NULLs).
@@ -12,20 +12,55 @@ pub enum ColumnData<'a> {
         validity: &'a [u32],
     },
     I32(&'a [i32]),
+    NullableI32 {
+        values: &'a [i32],
+        validity: &'a [u32],
+    },
 }
 
-impl ColumnData<'_> {
+impl<'a> ColumnData<'a> {
+    pub fn as_f32(self) -> Option<&'a [f32]> {
+        match self {
+            Self::F32(v) | Self::NullableF32 { values: v, .. } => Some(v),
+            _ => None,
+        }
+    }
+    pub fn as_i32(self) -> Option<&'a [i32]> {
+        match self {
+            Self::I32(v) | Self::NullableI32 { values: v, .. } => Some(v),
+            _ => None,
+        }
+    }
+    pub fn validity(self) -> Option<&'a [u32]> {
+        match self {
+            Self::NullableF32 { validity, .. } | Self::NullableI32 { validity, .. } => {
+                Some(validity)
+            }
+            _ => None,
+        }
+    }
+    pub(crate) fn to_bytes(self) -> Vec<u8> {
+        match self {
+            Self::F32(v) | Self::NullableF32 { values: v, .. } => {
+                v.iter().flat_map(|v| v.to_ne_bytes()).collect()
+            }
+            Self::I32(v) | Self::NullableI32 { values: v, .. } => {
+                v.iter().flat_map(|v| v.to_ne_bytes()).collect()
+            }
+        }
+    }
+
     pub fn data_type(self) -> DataType {
         match self {
             Self::F32(_) | Self::NullableF32 { .. } => DataType::F32,
-            Self::I32(_) => DataType::I32,
+            Self::I32(_) | Self::NullableI32 { .. } => DataType::I32,
         }
     }
     pub fn len(self) -> usize {
         match self {
             Self::F32(v) => v.len(),
             Self::NullableF32 { values, .. } => values.len(),
-            Self::I32(v) => v.len(),
+            Self::I32(v) | Self::NullableI32 { values: v, .. } => v.len(),
         }
     }
     pub fn is_empty(self) -> bool {
@@ -67,11 +102,11 @@ impl<'a> Batch<'a> {
                 actual: data.len(),
             });
         }
-        if let ColumnData::NullableF32 { values, validity } = data {
-            if validity.len() != values.len() {
+        if let Some(validity) = data.validity() {
+            if validity.len() != data.len() {
                 return Err(Error::ValidityLengthMismatch {
                     name,
-                    expected: values.len(),
+                    expected: data.len(),
                     actual: validity.len(),
                 });
             }
@@ -91,13 +126,14 @@ pub enum ScalarValue {
     F32(f32),
     NullableF32(Option<f32>),
     I32(i32),
+    NullableI32(Option<i32>),
 }
 
 impl ScalarValue {
     pub fn data_type(self) -> DataType {
         match self {
             Self::F32(_) | Self::NullableF32(_) => DataType::F32,
-            Self::I32(_) => DataType::I32,
+            Self::I32(_) | Self::NullableI32(_) => DataType::I32,
         }
     }
 }
@@ -110,6 +146,11 @@ impl From<f32> for ScalarValue {
 impl From<Option<f32>> for ScalarValue {
     fn from(value: Option<f32>) -> Self {
         Self::NullableF32(value)
+    }
+}
+impl From<Option<i32>> for ScalarValue {
+    fn from(value: Option<i32>) -> Self {
+        Self::NullableI32(value)
     }
 }
 impl From<i32> for ScalarValue {

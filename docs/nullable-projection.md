@@ -68,7 +68,7 @@ device API. Current arithmetic is pure F32 add/mul and can evaluate eagerly; no
 evaluation contract for future fallible operations is established here. Existing
 arithmetic grouping and separate-rounding policy remain in effect.
 
-## Binding ABI v3 and IR
+## Binding ABI v4 and IR
 
 Buffers remain scalar four-byte elements with U32 addressing. In schema-ID order,
 each referenced column has its F32 value buffer, followed by a U32 validity buffer
@@ -96,7 +96,7 @@ any result; failure from either read returns an error. Readback is synchronous
 and currently uses two read calls for nullable outputs. There is no device-resident
 result or async interface, and this feature makes no performance improvement claim.
 
-ABI version 3 describes value/validity planes; current codegen version 6 adds
+ABI version 4 describes value/validity planes; current codegen version 8 adds
 nullable predicate semantics without changing their physical representation. Static
 nullability participates in typed nodes and binding identity; dynamic flags,
 NULL/Some scalar state, row counts and addresses do not. Duplicate pure nullable
@@ -106,7 +106,7 @@ subexpressions retain the existing normalized DAG identity policy.
 
 Nullable comparisons, IS NULL, nullable Bool/three-valued logic and WHERE keep
 semantics are now implemented by [nullable predicates](three-valued-predicates.md). The optional [Arrow adapter](arrow-adapter.md) now handles F32 bitmap/offset
-conversion; integer arithmetic remains later work. Validity is currently dense U32, not an Arrow
+conversion; [checked I32](checked-i32.md) now extends numeric arithmetic. Validity is currently dense U32, not an Arrow
 bitmap, and no host expression interpreter is introduced.
 
 Seven tests cover schema/nullability inference and input validation, ABI planes,
@@ -130,3 +130,6 @@ all features/targets and library rustdoc with warnings denied, formatting and di
 checks. The standalone example ran on actual CPU and native Metal; rebinding
 `Some(2)` to NULL and back to `Some(3)` added zero IR definitions after the first
 invocation. No Cargo dependency or lockfile changes were needed.
+
+Current numeric extension: [checked I32](checked-i32.md) adds typed payloads and
+a per-row overflow error plane; I32 and F32 operands do not implicitly mix.

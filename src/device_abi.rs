@@ -84,6 +84,9 @@ impl KernelDeclaration {
     pub fn output(&self) -> Value {
         self.buffer(BufferSource::Output).expect("layout output")
     }
+    pub fn output_error(&self) -> Option<Value> {
+        self.buffer(BufferSource::OutputError)
+    }
     pub fn output_validity(&self) -> Option<Value> {
         self.buffer(BufferSource::OutputValidity)
     }
@@ -335,7 +338,7 @@ impl ValidatedBindings {
                 BufferAccess::WriteOnly => BufferIOAttr::WriteOnly,
             });
             // SAFETY: bind_device checked and narrowed the handle to exactly the
-            // logical extent. ABI v3 has scalar F32/U32 buffers, not vector lanes.
+            // logical extent. ABI v4 has scalar F32/U32 buffers, not vector lanes.
             let buffer =
                 unsafe { BufferArg::from_raw_parts(handle, self.extent.row_count() as usize) };
             launcher.register_buffer(buffer, slot.element_type().size_bytes() as usize);
@@ -344,6 +347,7 @@ impl ValidatedBindings {
             match scalar {
                 ScalarArgument::U32(value) => launcher.register_scalar(value),
                 ScalarArgument::F32(value) => launcher.register_scalar(value),
+                ScalarArgument::I32(value) => launcher.register_scalar(value),
             }
         }
         guard

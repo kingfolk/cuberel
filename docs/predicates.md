@@ -57,7 +57,7 @@ The root type controls the output declaration, imported device-buffer type,
 readback interpretation and validation. All loads, operations and stores remain
 inside the logical row-count guard. Complete IR is verified before build.
 
-Binding ABI version 3 (extended by [nullable projection](nullable-projection.md))
+Binding ABI version 4 (extended by [nullable projection](nullable-projection.md))
 records each buffer's physical type. Predicate operands use F32 value inputs;
 nullable F32 projections add U32 validity planes. Arithmetic output is F32 and
 predicate output is U32. All currently supported
@@ -72,7 +72,7 @@ wrong result types before allocation/launch; empty batches still validate all
 required inputs. Readback uses the same checked completion path, then validates
 mask values are 0/1. It does not reinterpret arbitrary bytes as Rust bools.
 
-Codegen version is now 6 after three-valued predicate support. Identity includes
+Codegen version is now 8 after three-valued predicate support. Identity includes
 comparison kind, boolean operations,
 typed nodes, remapped operands/root and the updated physical layout. Duplicate
 pure predicate nodes normalize with the existing structural interning. Parameter
@@ -85,7 +85,7 @@ reuses the artifact after parameters, input addresses and row counts change.
 The mask itself has no NULL flags: false and NULL both reject a row. Nullable
 predicates, SQL three-valued logic and IS NULL are now implemented separately in
 [three-valued predicates](three-valued-predicates.md). The optional [Arrow adapter](arrow-adapter.md) now handles array/bitmap offsets.
-Integer expressions, row compaction and relation operators remain later features. No host expression interpreter is introduced.
+Checked integer expressions are now supported; row compaction and relation operators remain later features. No host expression interpreter is introduced.
 
 Six new tests cover mixed-type preparation, invalid/unreachable operands,
 unary/binary reference and depth limits, output descriptor checks, and actual
@@ -109,3 +109,6 @@ ignored tests. Clippy (all features/targets) and library rustdoc passed with
 warnings denied; formatting and diff checks passed. The standalone example ran
 on CPU and native Metal, both producing `[0, 1, 0]` then `[1, 1, 1]`, with zero
 additional definitions on the second invocation. No new dependency was added.
+
+Current numeric extension: [checked I32](checked-i32.md) adds typed payloads and
+a per-row overflow error plane; I32 and F32 operands do not implicitly mix.

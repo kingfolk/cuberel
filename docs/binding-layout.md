@@ -20,7 +20,7 @@ deduplicates used columns and parameters, then sorts each by schema ID. It
 includes references in every validated arena node, even nodes unreachable from
 the root, matching preparation. Unused schema fields
 do not occupy slots. Input buffers precede the output planes. Inputs are read-only and outputs are
-write-only. ABI v3 adds dense U32 validity beside nullable F32 inputs and outputs;
+write-only. ABI v4 adds dense U32 validity beside nullable F32 inputs and outputs;
 Bool [predicate values](three-valued-predicates.md) use U32 value output and
 add a U32 validity output for nullable roots. See
 [nullable projection ABI](nullable-projection.md) for exact ordering and contracts.
@@ -93,7 +93,7 @@ comes from the handle's visible bytes, not `BufferArg`'s nominal length field.
 Without narrowing, a padded allocation could expose the wrong length to IR.
 Allocation size itself may exceed U32 if the active view's endpoint fits; the
 adapter does not promise support for U64 addresses. Strides, vectors, NULLs and
-in-place output are outside ABI version 3.
+in-place output are outside ABI version 4.
 
 ## Verification
 
@@ -130,3 +130,6 @@ cargo fmt --all -- --check
 The verification used `/private/tmp/cuberel-build.hmThUI` as `--target-dir` and
 `--offline` with already downloaded dependencies. CPU and Metal tests require
 actual device access; a GPU sandbox initialization failure is not a passing skip.
+
+Current numeric extension: [checked I32](checked-i32.md) adds typed payloads and
+a per-row overflow error plane; I32 and F32 operands do not implicitly mix.

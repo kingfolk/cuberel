@@ -32,10 +32,8 @@ Nullable F32 arithmetic and nullable Bool predicates are implemented.
 See [nullable projections](nullable-projection.md) for schema/input/result
 contracts. Bool is an expression result; Bool input declarations remain unsupported. See
 [predicates](predicates.md) for comparison and boolean APIs.
-DataType::I32, ColumnData::I32
-and ScalarValue::I32 describe unsupported/mismatched input and produce structured
-errors; they do not enable integer arithmetic. Used I32 declarations fail at
-preparation, and I32 data for an F32 declaration fails before device upload.
+I32 arithmetic/bindings are now supported with [checked overflow](checked-i32.md).
+I32 data for an F32 declaration (and the reverse) fails before device upload.
 There are no implicit casts; give float parameters an explicit `f32` suffix.
 
 Columns and parameters may have the same name. Empty or duplicate names within

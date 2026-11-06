@@ -8,7 +8,7 @@ use arrow_array::{
 use arrow_buffer::{NullBuffer, ScalarBuffer};
 use arrow_schema::{DataType as ArrowType, Field as ArrowField, Schema as ArrowSchema};
 use cuberel::{
-    DataType, Error, Field, Parameters, Schema,
+    ColumnData, DataType, Error, Field, Parameters, Schema,
     abi::{BindingError, BindingLayout},
     arrow::{ArrowAdapterError, ArrowBatch, schema_from_arrow},
     col, param, prepare,
@@ -49,12 +49,7 @@ fn arrow_schema_preserves_names_nullability_and_explicit_parameter_fields() {
         ]
     );
     assert_eq!(schema.parameters(), parameters);
-    for ty in [
-        ArrowType::Float64,
-        ArrowType::Int32,
-        ArrowType::Boolean,
-        ArrowType::Utf8,
-    ] {
+    for ty in [ArrowType::Float64, ArrowType::Boolean, ArrowType::Utf8] {
         assert!(
             matches!(schema_from_arrow(&ArrowSchema::new(vec![ArrowField::new("bad", ty.clone(), true)]), &[]), Err(ArrowAdapterError::UnsupportedType { data_type, .. }) if data_type == ty)
         );
@@ -92,15 +87,21 @@ fn independent_value_and_bitmap_offsets_are_borrowed_once() {
     let input = ArrowBatch::from_columns(&program, 4, &[("a", &array)]).unwrap();
     let batch = input.as_batch().unwrap();
     let host = layout.bind_host(&batch, &Parameters::new()).unwrap();
-    assert_eq!(host.columns()[0].as_ptr(), array.values().as_ptr());
-    assert_eq!(host.columns()[0], [1.0, 777.0, 3.0, 4.0]);
+    assert_eq!(
+        host.columns()[0].as_f32().unwrap().as_ptr(),
+        array.values().as_ptr()
+    );
+    assert_eq!(host.columns()[0].as_f32().unwrap(), [1.0, 777.0, 3.0, 4.0]);
     assert_eq!(host.column_validities()[0].unwrap(), [1, 0, 1, 1]);
     let slice = array.slice(1, 3).slice(1, 2);
     let input = ArrowBatch::from_columns(&program, 2, &[("a", &slice)]).unwrap();
     let batch = input.as_batch().unwrap();
     let host = layout.bind_host(&batch, &Parameters::new()).unwrap();
-    assert_eq!(host.columns()[0].as_ptr(), slice.values().as_ptr());
-    assert_eq!(host.columns()[0], [3.0, 4.0]);
+    assert_eq!(
+        host.columns()[0].as_f32().unwrap().as_ptr(),
+        slice.values().as_ptr()
+    );
+    assert_eq!(host.columns()[0].as_f32().unwrap(), [3.0, 4.0]);
     assert_eq!(host.column_validities(), &[None]);
 }
 
@@ -138,8 +139,13 @@ fn all_bitmap_bit_offsets_and_empty_nested_slices_match_logical_rows() {
             assert_eq!(input.row_count(), len);
             let batch = input.as_batch().unwrap();
             let host = layout.bind_host(&batch, &Parameters::new()).unwrap();
-            assert_eq!(host.columns()[0].as_ptr(), sliced.values().as_ptr());
+            assert_eq!(
+                host.columns()[0].as_f32().unwrap().as_ptr(),
+                sliced.values().as_ptr()
+            );
             let actual: Vec<_> = host.columns()[0]
+                .as_f32()
+                .unwrap()
                 .iter()
                 .enumerate()
                 .map(|(i, &v)| {
@@ -167,7 +173,13 @@ fn direct_arrays_validate_names_lengths_and_required_columns() {
     let bound = BindingLayout::new(&program)
         .bind_host(&batch, &Parameters::new())
         .unwrap();
-    assert_eq!(bound.columns(), &[b.values().as_ref(), a.values().as_ref()]);
+    assert_eq!(
+        bound.columns(),
+        &[
+            ColumnData::F32(b.values().as_ref()),
+            ColumnData::F32(a.values().as_ref())
+        ]
+    );
     assert!(matches!(
         ArrowBatch::from_columns(&program, 2, &[("a", &a), ("a", &b)]),
         Err(ArrowAdapterError::Input(Error::DuplicateName { .. }))

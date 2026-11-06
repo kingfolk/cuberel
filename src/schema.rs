@@ -2,8 +2,8 @@ use std::{collections::BTreeSet, fmt};
 
 use crate::{Error, InputKind};
 
-/// Logical expression types. Only F32 input bindings are currently supported.
-/// I32 describes unsupported/mismatched inputs; Bool is a predicate result type.
+/// Logical expression types. F32 and checked I32 inputs are supported.
+/// Bool is currently an expression result type.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DataType {
     F32,
