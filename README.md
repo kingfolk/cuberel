@@ -9,7 +9,8 @@ temporary build directories may live under `/private/tmp`.
 The library builds and validates runtime expressions, lowers nullable `f32`
 arithmetic and nullable boolean predicates to CubeCL IR, and executes on a selected CPU or native
 Metal client. No `#[cube]`, Rust source generation or runtime rustc invocation is
-used by this query path. SQL and Arrow integration are not yet implemented.
+used by this query path. Optional Arrow host adapters are available; SQL planning
+is not yet implemented.
 The backend smoke example separately initializes a real device and round-trips
 a buffer; it does **not** compile or launch a compute kernel.
 
@@ -99,6 +100,23 @@ NOT preserves NULL. See [three-valued predicate rules and APIs](docs/three-value
 ```sh
 cargo run --locked --example nullable_predicate -- cpu
 cargo run --locked --no-default-features --features metal --example nullable_predicate -- metal
+```
+
+## Arrow arrays and RecordBatch
+
+Enable `arrow` for pinned Arrow 60.0.0 host adapters. Convert a Float32 schema with
+`cuberel::arrow::schema_from_arrow`, then call `executor.execute_arrow` on a
+RecordBatch to obtain Float32Array or BooleanArray output. `execute_arrow_mask`
+returns an all-valid bit-packed WHERE mask. `ArrowBatch::from_columns` also accepts
+named Float32 arrays directly through a borrowed Batch view.
+
+Sliced values and validity bitmaps are handled independently, including non-byte
+bit offsets. The adapter borrows F32 values and expands input validity to the current
+U32 ABI; execution still uploads and reads back. See [Arrow API and memory costs](docs/arrow-adapter.md).
+
+```sh
+cargo run --locked --features arrow --example arrow_expr -- cpu
+cargo run --locked --no-default-features --features arrow,metal --example arrow_expr -- metal
 ```
 
 ## Kernel binding ABI

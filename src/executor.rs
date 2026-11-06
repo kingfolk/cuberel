@@ -381,6 +381,11 @@ pub struct NullableF32 {
     validity: Vec<u32>,
 }
 impl NullableF32 {
+    #[cfg(feature = "arrow")]
+    pub(crate) fn into_parts(self) -> (Vec<f32>, Vec<u32>) {
+        (self.values, self.validity)
+    }
+
     pub fn values(&self) -> &[f32] {
         &self.values
     }
@@ -409,6 +414,11 @@ pub struct NullableBool {
     validity: Vec<u32>,
 }
 impl NullableBool {
+    #[cfg(feature = "arrow")]
+    pub(crate) fn into_parts(self) -> (Vec<u32>, Vec<u32>) {
+        (self.values, self.validity)
+    }
+
     pub fn values(&self) -> &[u32] {
         &self.values
     }
