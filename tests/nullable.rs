@@ -48,7 +48,7 @@ fn nullability_is_bound_and_propagated_without_changing_numeric_type() {
         Err(Error::EmptyName { .. })
     ));
     let invalid =
-        Schema::from_fields(&[Field::new("a", DataType::I32).with_nullable(true)], &[]).unwrap();
+        Schema::from_fields(&[Field::new("a", DataType::Bool).with_nullable(true)], &[]).unwrap();
     assert!(matches!(
         prepare(&col("a"), &invalid),
         Err(Error::UnsupportedType { .. })

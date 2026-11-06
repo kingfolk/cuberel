@@ -81,7 +81,7 @@ validity before consumers use it. This avoids incorrectly applying ordinary
 operations into CubeCL IR once during definition; there is no row-wise AST
 interpreter in host or device code.
 
-ABI v3 already describes U32 values and separate U32 validity slots, so no new
+ABI v4 already describes U32 values and separate U32 validity slots, so no new
 physical ABI version is required. Nullable Bool roots use both planes. F32 values
 still use F32 output plus optional validity; IS NULL uses a single known Bool
 output. All buffer accesses and both stores stay inside the logical row guard,
@@ -134,3 +134,6 @@ with warnings denied, formatting and diff checks. The standalone example ran on
 real CPU and native Metal and matched all four projected results/WHERE masks in
 the table above. Validation used `--locked --offline` and the existing temporary
 target directory; no new dependency was added.
+
+Current numeric extension: [checked I32](checked-i32.md) adds typed payloads and
+a per-row overflow error plane; I32 and F32 operands do not implicitly mix.

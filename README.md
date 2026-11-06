@@ -7,7 +7,7 @@ Product source, tests, configuration and documentation belong in this repository
 temporary build directories may live under `/private/tmp`.
 
 The library builds and validates runtime expressions, lowers nullable `f32`
-arithmetic and nullable boolean predicates to CubeCL IR, and executes on a selected CPU or native
+arithmetic, checked I32 arithmetic and nullable boolean predicates to CubeCL IR, and executes on a selected CPU or native
 Metal client. No `#[cube]`, Rust source generation or runtime rustc invocation is
 used by this query path. Optional Arrow host adapters are available; SQL planning
 is not yet implemented.
@@ -57,6 +57,19 @@ See [the expression API and semantics](docs/typed-expressions.md) for preparatio
 limits and raw node graphs. See [device execution and its limits](docs/runtime-emitter.md)
 for IR construction, floating-point policy and the verification report.
 
+## Checked I32 expressions
+
+I32 supports same-type add/mul and signed comparisons, including nullable columns
+and parameters. Use `execute_i32` or `execute_nullable_i32`. Valid arithmetic that
+overflows returns `IntegerOverflow { row }`; NULL operands suppress that operation's
+overflow. There are no implicit F32/I32 casts. The optional Arrow adapter accepts
+Int32Array too. See [checked integer semantics and ABI](docs/checked-i32.md).
+
+```sh
+cargo run --locked --example checked_i32 -- cpu
+cargo run --locked --no-default-features --features metal --example checked_i32 -- metal
+```
+
 ## Nullable F32 projection
 
 Declare nullable fields through `Schema::from_fields` and
@@ -104,11 +117,11 @@ cargo run --locked --no-default-features --features metal --example nullable_pre
 
 ## Arrow arrays and RecordBatch
 
-Enable `arrow` for pinned Arrow 60.0.0 host adapters. Convert a Float32 schema with
+Enable `arrow` for pinned Arrow 60.0.0 host adapters. Convert a Float32/Int32 schema with
 `cuberel::arrow::schema_from_arrow`, then call `executor.execute_arrow` on a
-RecordBatch to obtain Float32Array or BooleanArray output. `execute_arrow_mask`
+RecordBatch to obtain Float32Array, Int32Array or BooleanArray output. `execute_arrow_mask`
 returns an all-valid bit-packed WHERE mask. `ArrowBatch::from_columns` also accepts
-named Float32 arrays directly through a borrowed Batch view.
+named numeric arrays directly through a borrowed Batch view.
 
 Sliced values and validity bitmaps are handled independently, including non-byte
 bit offsets. The adapter borrows F32 values and expands input validity to the current

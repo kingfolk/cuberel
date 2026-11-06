@@ -1,19 +1,19 @@
-//! Host Arrow 60 adapters. Input F32 values are borrowed; bitmaps expand to
+//! Host Arrow 60 adapters. Input numeric values are borrowed; bitmaps expand to
 //! dense U32 validity. Execution still uploads and reads back through CubeCL.
 
 use std::{collections::BTreeMap, error::Error as StdError, fmt, sync::Arc};
 
-use arrow_array::{Array, ArrayRef, BooleanArray, Float32Array, RecordBatch};
+use arrow_array::{Array, ArrayRef, BooleanArray, Float32Array, Int32Array, RecordBatch};
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use arrow_schema::{DataType as ArrowDataType, Schema as ArrowSchema};
 
 use crate::{
     Batch, ColumnData, DataType, Error, ExecutionError, Executor, Field, InputKind, KernelProgram,
-    NullableBool, NullableF32, Parameters, Schema,
+    NullableBool, NullableF32, NullableI32, Parameters, Schema,
     abi::{BindingError, BindingLayout, BufferSource},
 };
 
-/// Convert an all-Float32 Arrow schema and explicit Cuberel parameter fields.
+/// Convert an Float32/Int32 Arrow schema and explicit Cuberel parameter fields.
 /// Names and nullability are retained. Other Arrow types are explicitly rejected;
 /// use a hand-built Cuberel schema when a RecordBatch has unrelated extra columns.
 pub fn schema_from_arrow(
@@ -22,13 +22,8 @@ pub fn schema_from_arrow(
 ) -> Result<Schema, ArrowAdapterError> {
     let mut columns = Vec::with_capacity(schema.fields().len());
     for field in schema.fields() {
-        if field.data_type() != &ArrowDataType::Float32 {
-            return Err(ArrowAdapterError::UnsupportedType {
-                name: field.name().clone(),
-                data_type: field.data_type().clone(),
-            });
-        }
-        columns.push(Field::new(field.name(), DataType::F32).with_nullable(field.is_nullable()));
+        let ty = numeric_type(field.name(), field.data_type())?;
+        columns.push(Field::new(field.name(), ty).with_nullable(field.is_nullable()));
     }
     Ok(Schema::from_fields(&columns, parameters)?)
 }
@@ -36,7 +31,7 @@ pub fn schema_from_arrow(
 #[derive(Debug)]
 struct ArrowColumn<'a> {
     name: String,
-    values: &'a [f32],
+    values: ColumnData<'a>,
     validity: Option<Vec<u32>>,
 }
 
@@ -68,25 +63,18 @@ impl<'a> ArrowBatch<'a> {
             if let BufferSource::Column(_) = slot.source() {
                 let index = *names.get(slot.name()).ok_or_else(|| missing(slot.name()))?;
                 let array = input.column(index);
-                let array = array
-                    .as_any()
-                    .downcast_ref::<Float32Array>()
-                    .ok_or_else(|| ArrowAdapterError::UnsupportedType {
-                        name: slot.name().into(),
-                        data_type: array.data_type().clone(),
-                    })?;
-                columns.push((slot.name(), array));
+                columns.push((slot.name(), array.as_ref()));
             }
         }
         Self::from_columns(program, input.num_rows(), &columns)
     }
 
-    /// Bind named Float32 arrays directly. All supplied arrays must match the
+    /// Bind named Float32/Int32 arrays directly. All supplied arrays must match the
     /// explicit row count. Parameter-only programs may supply an empty list.
     pub fn from_columns(
         program: &KernelProgram,
         row_count: usize,
-        columns: &[(&str, &'a Float32Array)],
+        columns: &[(&str, &'a dyn Array)],
     ) -> Result<Self, ArrowAdapterError> {
         let layout = BindingLayout::new(program);
         // Enforce the existing byte/row ABI limits before expanding any bitmap.
@@ -107,12 +95,34 @@ impl<'a> ArrowBatch<'a> {
         for slot in layout.buffers() {
             if let BufferSource::Column(id) = slot.source() {
                 let array = *named.get(slot.name()).ok_or_else(|| missing(slot.name()))?;
-                if array.data_type() != &ArrowDataType::Float32 {
-                    return Err(ArrowAdapterError::UnsupportedType {
+                let actual = numeric_type(slot.name(), array.data_type())?;
+                let expected = program.schema().columns()[id.index()].data_type();
+                if actual != expected {
+                    return Err(ArrowAdapterError::TypeMismatch {
                         name: slot.name().into(),
-                        data_type: array.data_type().clone(),
+                        expected,
+                        actual,
                     });
                 }
+                let values = match actual {
+                    DataType::F32 => ColumnData::F32(
+                        array
+                            .as_any()
+                            .downcast_ref::<Float32Array>()
+                            .expect("Float32 array")
+                            .values()
+                            .as_ref(),
+                    ),
+                    DataType::I32 => ColumnData::I32(
+                        array
+                            .as_any()
+                            .downcast_ref::<Int32Array>()
+                            .expect("Int32 array")
+                            .values()
+                            .as_ref(),
+                    ),
+                    _ => unreachable!(),
+                };
                 if !program.schema().columns()[id.index()].is_nullable() && array.null_count() != 0
                 {
                     return Err(Error::UnexpectedNull {
@@ -131,7 +141,7 @@ impl<'a> ArrowBatch<'a> {
                 });
                 selected.push(ArrowColumn {
                     name: slot.name().into(),
-                    values: array.values().as_ref(),
+                    values,
                     validity,
                 });
             }
@@ -151,12 +161,15 @@ impl<'a> ArrowBatch<'a> {
     pub fn as_batch(&self) -> Result<Batch<'_>, Error> {
         let mut batch = Batch::new(self.row_count);
         for column in &self.columns {
-            let data = match &column.validity {
-                Some(validity) => ColumnData::NullableF32 {
-                    values: column.values,
-                    validity,
-                },
-                None => ColumnData::F32(column.values),
+            let data = match (column.values, &column.validity) {
+                (ColumnData::F32(values), Some(validity)) => {
+                    ColumnData::NullableF32 { values, validity }
+                }
+                (ColumnData::I32(values), Some(validity)) => {
+                    ColumnData::NullableI32 { values, validity }
+                }
+                (values, None) => values,
+                _ => unreachable!("normalized Arrow payload"),
             };
             batch = batch.with_column(&column.name, data)?;
         }
@@ -165,7 +178,7 @@ impl<'a> ArrowBatch<'a> {
 }
 
 impl Executor {
-    /// Execute one expression on a host RecordBatch, returning Float32Array or
+    /// Execute one expression on a host RecordBatch, returning Float32Array, Int32Array or
     /// BooleanArray as ArrayRef. Predicate NULLs are preserved, not filtered.
     pub fn execute_arrow(
         &self,
@@ -184,7 +197,10 @@ impl Executor {
                 self.execute_predicate(program, &batch, parameters)?
                     .into_arrow(),
             )),
-            DataType::I32 => unreachable!("prepared output type"),
+            DataType::I32 => Ok(Arc::new(
+                self.execute_nullable_i32(program, &batch, parameters)?
+                    .into_arrow(),
+            )),
         }
     }
 
@@ -232,6 +248,24 @@ impl NullableBool {
     }
 }
 
+impl NullableI32 {
+    pub fn into_arrow(self) -> Int32Array {
+        let (values, validity) = self.into_parts();
+        Int32Array::new(values.into(), pack_validity(validity))
+    }
+}
+
+fn numeric_type(name: &str, ty: &ArrowDataType) -> Result<DataType, ArrowAdapterError> {
+    match ty {
+        ArrowDataType::Float32 => Ok(DataType::F32),
+        ArrowDataType::Int32 => Ok(DataType::I32),
+        _ => Err(ArrowAdapterError::UnsupportedType {
+            name: name.into(),
+            data_type: ty.clone(),
+        }),
+    }
+}
+
 fn pack_validity(validity: Vec<u32>) -> Option<NullBuffer> {
     if validity.contains(&0) {
         Some(NullBuffer::from_iter(validity.into_iter().map(|v| v == 1)))
@@ -269,6 +303,11 @@ fn missing(name: &str) -> Error {
 #[derive(Debug)]
 pub enum ArrowAdapterError {
     Input(Error),
+    TypeMismatch {
+        name: String,
+        expected: DataType,
+        actual: DataType,
+    },
     Binding(BindingError),
     Execution(ExecutionError),
     UnsupportedType {
@@ -295,12 +334,20 @@ impl From<ExecutionError> for ArrowAdapterError {
 impl fmt::Display for ArrowAdapterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::TypeMismatch {
+                name,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "Arrow column {name:?} has type {actual}; expected {expected}"
+            ),
             Self::Input(error) => write!(f, "invalid Arrow input: {error}"),
             Self::Binding(error) => write!(f, "invalid Arrow binding: {error}"),
             Self::Execution(error) => error.fmt(f),
             Self::UnsupportedType { name, data_type } => write!(
                 f,
-                "Arrow column {name:?} has unsupported type {data_type}; expected Float32"
+                "Arrow column {name:?} has unsupported type {data_type}; expected Float32 or Int32"
             ),
         }
     }
@@ -311,7 +358,7 @@ impl StdError for ArrowAdapterError {
             Self::Input(e) => Some(e),
             Self::Binding(e) => Some(e),
             Self::Execution(e) => Some(e),
-            Self::UnsupportedType { .. } => None,
+            Self::UnsupportedType { .. } | Self::TypeMismatch { .. } => None,
         }
     }
 }

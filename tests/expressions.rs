@@ -136,7 +136,7 @@ fn prepare_rejects_unknown_columns_and_parameters() {
 
 #[test]
 fn prepare_rejects_unsupported_referenced_types() {
-    let schema = Schema::new(&[("a", DataType::I32)], &[("p", DataType::I32)]).unwrap();
+    let schema = Schema::new(&[("a", DataType::Bool)], &[("p", DataType::Bool)]).unwrap();
     for (expr, kind, name) in [
         (col("a"), InputKind::Column, "a"),
         (param("p"), InputKind::Parameter, "p"),
@@ -146,7 +146,7 @@ fn prepare_rejects_unsupported_referenced_types() {
             Error::UnsupportedType {
                 kind,
                 name: name.into(),
-                data_type: DataType::I32
+                data_type: DataType::Bool
             }
         );
     }

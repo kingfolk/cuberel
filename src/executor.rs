@@ -184,6 +184,47 @@ impl Executor {
         Ok(NullableBool { values, validity })
     }
 
+    /// Execute a non-nullable checked I32 expression.
+    pub fn execute_i32(
+        &self,
+        program: &KernelProgram,
+        batch: &Batch<'_>,
+        parameters: &Parameters,
+    ) -> Result<Vec<i32>, ExecutionError> {
+        self.require_output_type(program, DataType::I32)?;
+        self.require_non_nullable(program)?;
+        let output = self.execute_bytes(program, batch, parameters)?;
+        Ok(output
+            .values
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| i32::from_ne_bytes(*b))
+            .collect())
+    }
+    /// Execute a checked I32 projection, retaining NULL validity.
+    pub fn execute_nullable_i32(
+        &self,
+        program: &KernelProgram,
+        batch: &Batch<'_>,
+        parameters: &Parameters,
+    ) -> Result<NullableI32, ExecutionError> {
+        self.require_output_type(program, DataType::I32)?;
+        let output = self.execute_bytes(program, batch, parameters)?;
+        let values: Vec<_> = output
+            .values
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| i32::from_ne_bytes(*b))
+            .collect();
+        let validity = match output.validity {
+            Some(bytes) => decode_validity(&bytes)?,
+            None => vec![1; values.len()],
+        };
+        Ok(NullableI32 { values, validity })
+    }
+
     fn require_non_nullable(&self, program: &KernelProgram) -> Result<(), ExecutionError> {
         if program.output_nullable() {
             return Err(ExecutionError::NullableOutput);
@@ -237,14 +278,12 @@ impl Executor {
         let mut buffers = Vec::with_capacity(layout.buffers().len());
         let mut output = None;
         let mut output_validity = None;
+        let mut output_error = None;
         for slot in layout.buffers() {
             let handle = match slot.source() {
                 BufferSource::Column(id) => {
                     let (column, _) = host.column_data(id);
-                    let bytes: Vec<u8> = column
-                        .iter()
-                        .flat_map(|value| value.to_ne_bytes())
-                        .collect();
+                    let bytes = column.to_bytes();
                     self.client.create_from_slice(&bytes)
                 }
                 BufferSource::ColumnValidity(id) => {
@@ -257,6 +296,11 @@ impl Executor {
                 BufferSource::Output => {
                     let handle = self.client.empty(host.extent().byte_len());
                     output = Some(handle.clone());
+                    handle
+                }
+                BufferSource::OutputError => {
+                    let handle = self.client.empty(host.extent().byte_len());
+                    output_error = Some(handle.clone());
                     handle
                 }
                 BufferSource::OutputValidity => {
@@ -306,6 +350,16 @@ impl Executor {
         // No result is exposed unless every declared output has completed.
         let values = read(output.expect("layout output"))?;
         let validity = output_validity.map(read).transpose()?;
+        if let Some(handle) = output_error {
+            let flags = read(handle)?;
+            for (row, chunk) in flags.as_chunks::<4>().0.iter().enumerate() {
+                match u32::from_ne_bytes(*chunk) {
+                    0 => {}
+                    1 => return Err(ExecutionError::IntegerOverflow { row }),
+                    value => return Err(ExecutionError::InvalidMaskValue { index: row, value }),
+                }
+            }
+        }
         Ok(OutputBytes { values, validity })
     }
 }
@@ -314,6 +368,9 @@ impl Executor {
 pub enum ExecutionError {
     Binding(BindingError),
     NullableOutput,
+    IntegerOverflow {
+        row: usize,
+    },
     OutputType {
         expected: DataType,
         actual: DataType,
@@ -345,7 +402,12 @@ impl From<BindingError> for ExecutionError {
 impl fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NullableOutput => f.write_str("nullable F32 output requires execute_nullable"),
+            Self::NullableOutput => {
+                f.write_str("nullable numeric output requires its matching nullable execution API")
+            }
+            Self::IntegerOverflow { row } => {
+                write!(f, "checked I32 arithmetic overflow at row {row}")
+            }
             Self::OutputType { expected, actual } => {
                 write!(f, "expected {expected} output, program produces {actual}")
             }
@@ -436,6 +498,37 @@ impl NullableBool {
             .iter()
             .zip(&self.validity)
             .map(|(&value, &valid)| (valid == 1).then_some(value == 1))
+    }
+}
+
+/// Owned checked I32 projection with canonical zero payloads for NULL rows.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NullableI32 {
+    values: Vec<i32>,
+    validity: Vec<u32>,
+}
+impl NullableI32 {
+    #[cfg(feature = "arrow")]
+    pub(crate) fn into_parts(self) -> (Vec<i32>, Vec<u32>) {
+        (self.values, self.validity)
+    }
+    pub fn values(&self) -> &[i32] {
+        &self.values
+    }
+    pub fn validity(&self) -> &[u32] {
+        &self.validity
+    }
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = Option<i32>> + '_ {
+        self.values
+            .iter()
+            .zip(&self.validity)
+            .map(|(&value, &valid)| (valid == 1).then_some(value))
     }
 }
 

@@ -9,7 +9,7 @@ use crate::{
     Parameters, ScalarOp, ScalarValue,
 };
 
-pub const BINDING_ABI_VERSION: u32 = 3;
+pub const BINDING_ABI_VERSION: u32 = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PhysicalType {
@@ -19,6 +19,14 @@ pub enum PhysicalType {
 }
 
 impl PhysicalType {
+    fn for_numeric(ty: DataType) -> Self {
+        match ty {
+            DataType::F32 => Self::F32,
+            DataType::I32 => Self::I32,
+            _ => unreachable!("prepared numeric input"),
+        }
+    }
+
     pub const fn size_bytes(self) -> u64 {
         4
     }
@@ -39,9 +47,10 @@ pub enum BufferSource {
     ColumnValidity(ColumnId),
     Output,
     OutputValidity,
+    OutputError,
 }
 
-/// A scalar F32 payload or U32 validity/mask buffer.
+/// A scalar F32/I32 payload or U32 validity/mask/error buffer.
 /// Logical length equals the invocation row count.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BufferSlot {
@@ -136,7 +145,9 @@ impl BindingLayout {
                 source: BufferSource::Column(ColumnId(index)),
                 name: program.schema().columns()[index].name().into(),
                 access: BufferAccess::ReadOnly,
-                element_type: PhysicalType::F32,
+                element_type: PhysicalType::for_numeric(
+                    program.schema().columns()[index].data_type(),
+                ),
             });
             if program.schema().columns()[index].is_nullable() {
                 buffers.push(BufferSlot {
@@ -156,7 +167,7 @@ impl BindingLayout {
             element_type: match program.output_type() {
                 DataType::F32 => PhysicalType::F32,
                 DataType::Bool => PhysicalType::U32,
-                DataType::I32 => unreachable!("prepared output type"),
+                DataType::I32 => PhysicalType::I32,
             },
         });
         if program.output_nullable() {
@@ -168,6 +179,15 @@ impl BindingLayout {
                 element_type: PhysicalType::U32,
             });
         }
+        if program.has_integer_arithmetic() {
+            buffers.push(BufferSlot {
+                index: buffers.len(),
+                source: BufferSource::OutputError,
+                name: "output_error".into(),
+                access: BufferAccess::WriteOnly,
+                element_type: PhysicalType::U32,
+            });
+        }
         let mut scalars = vec![ScalarSlot {
             source: ScalarSource::RowCount,
             name: "row_count".into(),
@@ -175,11 +195,27 @@ impl BindingLayout {
             ordinal_within_type: 0,
         }];
         let mut validity_ordinal = 1;
-        for (ordinal, index) in parameters.into_iter().enumerate() {
+        let mut float_ordinal = 0;
+        let mut int_ordinal = 0;
+        for index in parameters {
+            let ty = PhysicalType::for_numeric(program.schema().parameters()[index].data_type());
+            let ordinal = match ty {
+                PhysicalType::F32 => {
+                    let n = float_ordinal;
+                    float_ordinal += 1;
+                    n
+                }
+                PhysicalType::I32 => {
+                    let n = int_ordinal;
+                    int_ordinal += 1;
+                    n
+                }
+                _ => unreachable!(),
+            };
             scalars.push(ScalarSlot {
                 source: ScalarSource::Parameter(ParameterId(index)),
                 name: program.schema().parameters()[index].name().into(),
-                element_type: PhysicalType::F32,
+                element_type: ty,
                 ordinal_within_type: ordinal,
             });
             if program.schema().parameters()[index].is_nullable() {
@@ -223,13 +259,13 @@ impl BindingLayout {
     }
 
     /// Check active lengths and byte extents without allocating a device buffer.
-    /// ABI v3 conservatively limits both row count and active byte ends to U32.
+    /// ABI v4 conservatively limits both row count and active byte ends to U32.
     pub fn extent(&self, row_count: u64) -> Result<BufferExtent, BindingError> {
         let rows = u32::try_from(row_count).map_err(|_| BindingError::AddressOverflow {
             field: "row_count",
             value: row_count,
         })?;
-        // Every supported buffer slot is four bytes per row in ABI v3.
+        // Every supported buffer slot is four bytes per row in ABI v4.
         let bytes = row_count * PhysicalType::F32.size_bytes();
         if bytes > u64::from(u32::MAX) {
             return Err(BindingError::AddressOverflow {
@@ -330,17 +366,27 @@ impl BindingLayout {
                         kind,
                         name: slot.name.clone(),
                     })?;
-                let (values, validity) = match data {
-                    ColumnData::F32(values) => (values, None),
-                    ColumnData::NullableF32 { values, validity } => (values, Some(validity)),
-                    _ => {
-                        return Err(Error::TypeMismatch {
-                            kind,
-                            name: slot.name.clone(),
-                            expected: DataType::F32,
-                            actual: data.data_type(),
-                        }
-                        .into());
+                let expected = match slot.element_type {
+                    PhysicalType::F32 => DataType::F32,
+                    PhysicalType::I32 => DataType::I32,
+                    _ => unreachable!(),
+                };
+                if data.data_type() != expected {
+                    return Err(Error::TypeMismatch {
+                        kind,
+                        name: slot.name.clone(),
+                        expected,
+                        actual: data.data_type(),
+                    }
+                    .into());
+                }
+                let validity = data.validity();
+                let values = match data {
+                    ColumnData::F32(v) | ColumnData::NullableF32 { values: v, .. } => {
+                        ColumnData::F32(v)
+                    }
+                    ColumnData::I32(v) | ColumnData::NullableI32 { values: v, .. } => {
+                        ColumnData::I32(v)
                     }
                 };
                 if !self
@@ -387,20 +433,37 @@ impl BindingLayout {
                                 kind,
                                 name: slot.name.clone(),
                             })?;
-                    let value = match value {
-                        ScalarValue::F32(value) => Some(value),
-                        ScalarValue::NullableF32(value) => value,
-                        _ => {
-                            return Err(Error::TypeMismatch {
-                                kind,
-                                name: slot.name.clone(),
-                                expected: DataType::F32,
-                                actual: value.data_type(),
-                            }
-                            .into());
+                    let payload_type = self
+                        .scalars
+                        .iter()
+                        .find(|s| s.source == ScalarSource::Parameter(id))
+                        .expect("parameter payload")
+                        .element_type;
+                    let expected = match payload_type {
+                        PhysicalType::F32 => DataType::F32,
+                        PhysicalType::I32 => DataType::I32,
+                        _ => unreachable!(),
+                    };
+                    if value.data_type() != expected {
+                        return Err(Error::TypeMismatch {
+                            kind,
+                            name: slot.name.clone(),
+                            expected,
+                            actual: value.data_type(),
+                        }
+                        .into());
+                    }
+                    let (payload, valid) = match value {
+                        ScalarValue::F32(v) => (ScalarArgument::F32(v), true),
+                        ScalarValue::NullableF32(v) => {
+                            (ScalarArgument::F32(v.unwrap_or(0.0)), v.is_some())
+                        }
+                        ScalarValue::I32(v) => (ScalarArgument::I32(v), true),
+                        ScalarValue::NullableI32(v) => {
+                            (ScalarArgument::I32(v.unwrap_or(0)), v.is_some())
                         }
                     };
-                    if value.is_none()
+                    if !valid
                         && !self
                             .scalars
                             .iter()
@@ -413,10 +476,8 @@ impl BindingLayout {
                         .into());
                     }
                     Ok(match slot.source {
-                        ScalarSource::Parameter(_) => ScalarArgument::F32(value.unwrap_or(0.0)),
-                        ScalarSource::ParameterValidity(_) => {
-                            ScalarArgument::U32(u32::from(value.is_some()))
-                        }
+                        ScalarSource::Parameter(_) => payload,
+                        ScalarSource::ParameterValidity(_) => ScalarArgument::U32(u32::from(valid)),
                         _ => unreachable!(),
                     })
                 }
@@ -452,6 +513,7 @@ pub struct BufferDescriptor {
 pub enum ScalarArgument {
     U32(u32),
     F32(f32),
+    I32(i32),
 }
 
 /// Column value slices are in schema-ID order, excluding validity/output slots.
@@ -460,7 +522,7 @@ pub enum ScalarArgument {
 pub struct HostBindings<'a> {
     layout: BindingLayout,
     extent: BufferExtent,
-    columns: Vec<&'a [f32]>,
+    columns: Vec<ColumnData<'a>>,
     column_validities: Vec<Option<&'a [u32]>>,
     scalars: Vec<ScalarArgument>,
 }
@@ -471,14 +533,14 @@ impl<'a> HostBindings<'a> {
     pub fn extent(&self) -> BufferExtent {
         self.extent
     }
-    pub fn columns(&self) -> &[&'a [f32]] {
+    pub fn columns(&self) -> &[ColumnData<'a>] {
         &self.columns
     }
     /// Dense validity slices aligned with columns(); None means all valid.
     pub fn column_validities(&self) -> &[Option<&'a [u32]>] {
         &self.column_validities
     }
-    pub(crate) fn column_data(&self, id: ColumnId) -> (&'a [f32], Option<&'a [u32]>) {
+    pub(crate) fn column_data(&self, id: ColumnId) -> (ColumnData<'a>, Option<&'a [u32]>) {
         let index = self
             .layout
             .buffers
@@ -556,10 +618,10 @@ impl fmt::Display for BindingError {
         match self {
             Self::Input(error) => error.fmt(f),
             Self::UnsupportedAddressType(ty) => {
-                write!(f, "ABI v3 does not support address type {ty}")
+                write!(f, "ABI v4 does not support address type {ty}")
             }
             Self::AddressOverflow { field, value } => {
-                write!(f, "{field}={value} exceeds the ABI v3 address range")
+                write!(f, "{field}={value} exceeds the ABI v4 address range")
             }
             Self::BufferCount { expected, actual } => {
                 write!(f, "expected {expected} buffers, got {actual}")

@@ -104,7 +104,7 @@ impl fmt::Display for Error {
                 data_type,
             } => write!(
                 f,
-                "{kind} {name:?} has unsupported type {data_type}; expected f32"
+                "{kind} {name:?} has unsupported type {data_type}; expected f32 or i32"
             ),
             Self::UnexpectedNull { kind, name } => {
                 write!(f, "non-nullable {kind} {name:?} contains NULL")

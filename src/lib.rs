@@ -3,7 +3,7 @@
 //! Build expressions with [`col`] and [`param`], bind them with [`prepare`], and
 //! execute them on a selected CubeCL client with [`Executor::execute`].
 //! Expressions lower directly to IR at runtime, without generating Rust source.
-//! Supports nullable `f32` arithmetic and nullable boolean predicates; use
+//! Supports nullable `f32` and checked `i32` arithmetic and nullable boolean predicates; use
 //! [`Executor::execute_nullable`] for value/validity projection output and
 //! [`Executor::execute_predicate`] for three-valued Bool projections, or
 //! [`Executor::execute_mask`] for dense WHERE flags.
@@ -21,6 +21,7 @@
 pub mod arrow;
 
 pub mod abi;
+#[path = "device_abi.rs"]
 pub mod cubecl_abi;
 
 mod emitter;
@@ -32,7 +33,7 @@ mod schema;
 
 pub use emitter::{CODEGEN_VERSION, ExpressionIdentity};
 pub use error::{Error, InputKind};
-pub use executor::{ExecutionError, Executor, NullableBool, NullableF32};
+pub use executor::{ExecutionError, Executor, NullableBool, NullableF32, NullableI32};
 pub use expr::{
     Comparison, Expr, ExprId, ExprNode, KernelProgram, PrepareLimits, ScalarOp, TypedExpr, col,
     param, prepare, prepare_with_limits,
