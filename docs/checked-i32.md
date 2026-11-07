@@ -90,9 +90,9 @@ The additional error plane costs 4*N device bytes plus checked readback and a ho
 scan for these programs. This simple per-row diagnostic is an initial correctness
 choice, not a throughput optimization.
 
-Codegen v8 and ABI v4 invalidate incompatible cached artifacts. Typed node types,
+Codegen v9 and ABI v4 invalidate incompatible cached artifacts. Typed node types,
 nullability and the presence of the error plane participate in identity; runtime
-values/null flags do not. The error output contains only row flags, avoiding raw
+values/null flags do not. The ordinary full-batch error output contains row flags, avoiding raw
 ExprId diagnostics that would be inconsistent when structurally duplicated and
 shared DAGs normalize to the same cache identity.
 
@@ -137,3 +137,7 @@ formatting/diff checks passed. CPU and native Metal examples produced [3,NULL,7]
 WHERE [1,0,1], reported a row-0 overflow and then executed successfully again.
 The device adapter implementation moved to src/device_abi.rs while preserving
 its public cubecl_abi module name. No dependency changes were made.
+
+Selected execution encodes original row+1 in compact error prefixes and checks
+only active rows. See [selected projection](selected-projection.md); the existing
+eager full-batch arithmetic semantics remain unchanged.

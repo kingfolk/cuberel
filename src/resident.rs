@@ -4,7 +4,7 @@ use crate::{
     Batch, DataType, Error, ExecutionError, Executor, Field, InputKind, KernelProgram,
     NullableBool, NullableF32, NullableI32, Parameters,
     abi::{BindingError, BindingLayout, BufferSource, PhysicalType},
-    executor::{SubmittedExpression, decode_validity, read_plane},
+    executor::{OutputBytes, SubmittedExpression, decode_validity, read_plane},
 };
 use cubecl::{bytes::Bytes, future::block_on, prelude::Client, server::Handle};
 use std::{
@@ -192,37 +192,11 @@ impl DeviceResult {
         self.outputs
             .iter()
             .map(|(ty, _, output)| {
-                let bytes = output.read_bytes(&self.client, &self.counters)?;
-                let validity = match bytes.validity {
-                    Some(v) => decode_validity(&v)?,
-                    None => vec![1; output.rows as usize],
-                };
-                Ok(match ty {
-                    DataType::F32 => HostColumn::F32(NullableF32::new(
-                        bytes
-                            .values
-                            .as_chunks::<4>()
-                            .0
-                            .iter()
-                            .map(|v| f32::from_ne_bytes(*v))
-                            .collect(),
-                        validity,
-                    )),
-                    DataType::I32 => HostColumn::I32(NullableI32::new(
-                        bytes
-                            .values
-                            .as_chunks::<4>()
-                            .0
-                            .iter()
-                            .map(|v| i32::from_ne_bytes(*v))
-                            .collect(),
-                        validity,
-                    )),
-                    DataType::Bool => HostColumn::Bool(NullableBool::new(
-                        decode_validity(&bytes.values)?,
-                        validity,
-                    )),
-                })
+                decode_host_column(
+                    *ty,
+                    output.read_bytes(&self.client, &self.counters)?,
+                    output.rows as usize,
+                )
             })
             .collect()
     }
@@ -331,6 +305,42 @@ impl Executor {
             outputs: Arc::new(outputs),
         })
     }
+}
+
+pub(crate) fn decode_host_column(
+    ty: DataType,
+    bytes: OutputBytes,
+    rows: usize,
+) -> Result<HostColumn, ExecutionError> {
+    let validity = match bytes.validity {
+        Some(v) => decode_validity(&v)?,
+        None => vec![1; rows],
+    };
+    Ok(match ty {
+        DataType::F32 => HostColumn::F32(NullableF32::new(
+            bytes
+                .values
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|v| f32::from_ne_bytes(*v))
+                .collect(),
+            validity,
+        )),
+        DataType::I32 => HostColumn::I32(NullableI32::new(
+            bytes
+                .values
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|v| i32::from_ne_bytes(*v))
+                .collect(),
+            validity,
+        )),
+        DataType::Bool => {
+            HostColumn::Bool(NullableBool::new(decode_validity(&bytes.values)?, validity))
+        }
+    })
 }
 
 #[cfg(all(

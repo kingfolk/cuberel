@@ -205,10 +205,10 @@ planned before upload. This is not a claim that CubeCL intrinsically requires a
 4 GiB byte limit. A smaller actual allocation/grid/shared-memory capability can
 still limit the operation. Unified request memory budgets are a later feature.
 
-Selection primitives have their own versioned identity (version 1), stage, full
+Selection primitives have their own versioned identity (currently version 2, extended by F3), stage, full
 settings/tile, target name and device checksum. Counts, row lengths, number of
 recursion levels, values and addresses do not enter the primitive key. Expression
-ABI v4/codegen v8 are unchanged. `Executor::define_count()` counts expression and
+ABI v4 is unchanged; shared expression codegen is now v9. `Executor::define_count()` counts expression and
 selection IR definition attempts, not driver compilation or disk-cache hits.
 
 ## Memory and readback costs
@@ -280,3 +280,6 @@ through the reuse run (including the earlier expression demonstration).
 These are single debug observations, not a statistically controlled benchmark
 or CPU/GPU speedup claim. In particular, the barrier-heavy CPU template has
 substantial overhead; backend-specific scan optimization remains future work.
+
+[F3 selected execution](selected-projection.md) adds count-guarded scan/scatter,
+nested filters in original row coordinates and compact projection/Arrow output.

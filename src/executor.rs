@@ -19,7 +19,7 @@ use cubecl::{
 };
 
 use crate::{
-    Batch, DataType, DeviceBatch, KernelProgram, Parameters,
+    Batch, DataType, DeviceBatch, DeviceSelection, KernelProgram, Parameters,
     abi::{BindingError, BindingLayout, BufferSource},
     cubecl_abi::DeviceBuffer,
     emitter::{ExpressionIdentity, ExpressionKernel},
@@ -313,6 +313,24 @@ impl Executor {
         batch: &DeviceBatch,
         parameters: &Parameters,
     ) -> Result<SubmittedExpression, ExecutionError> {
+        self.submit_expression_impl(program, batch, parameters, None)
+    }
+    pub(crate) fn submit_selected_expression(
+        &self,
+        program: &KernelProgram,
+        batch: &DeviceBatch,
+        parameters: &Parameters,
+        selection: &DeviceSelection,
+    ) -> Result<SubmittedExpression, ExecutionError> {
+        self.submit_expression_impl(program, batch, parameters, Some(selection))
+    }
+    fn submit_expression_impl(
+        &self,
+        program: &KernelProgram,
+        batch: &DeviceBatch,
+        parameters: &Parameters,
+        selection: Option<&DeviceSelection>,
+    ) -> Result<SubmittedExpression, ExecutionError> {
         let layout = BindingLayout::new(program);
         batch.validate(&self.client, &layout, parameters)?;
         self.preflight_expression(&layout, u64::from(batch.row_count()))?;
@@ -356,28 +374,47 @@ impl Executor {
             retained.push(handle.clone());
             // SAFETY: input bytes come from initialized typed slices and checked
             // validity. Outputs are distinct fresh write-only allocations. The
-            // emitter initializes both output planes for every in-range row.
+            // ordinary emitter initializes every row; selected outputs initialize
+            // only the count prefix, which the selected materializer alone reads.
             buffers.push(unsafe {
                 DeviceBuffer::from_raw_parts(handle, slot.element_type(), u64::from(rows))
             });
         }
         let bound = layout.bind_device(&self.client, u64::from(rows), &buffers, parameters)?;
         let settings = self.settings();
-        let kernel = ExpressionKernel::new(
+        let constructor = if selection.is_some() {
+            ExpressionKernel::selected
+        } else {
+            ExpressionKernel::new
+        };
+        let kernel = constructor(
             program.clone(),
             self.client.clone(),
             settings.clone(),
             self.define_count.clone(),
         );
         // SAFETY: this private emitter uses the same immutable layout/settings,
-        // guards every load/store by row_count and has no barriers or aliasing.
+        // guards every load/store by row_count (and device count for selected
+        // inputs), with no barriers or output aliasing.
         unsafe {
-            bound.launch(
-                &self.client,
-                settings,
-                kernel,
-                CubeCount::Static(cubes, 1, 1),
-            )?;
+            if let Some(selection) = selection {
+                let selected = (selection.indices_handle(), selection.count_handle());
+                retained.extend([selected.0.clone(), selected.1.clone()]);
+                bound.launch_selected(
+                    &self.client,
+                    settings,
+                    kernel,
+                    CubeCount::Static(cubes, 1, 1),
+                    selected,
+                )?;
+            } else {
+                bound.launch(
+                    &self.client,
+                    settings,
+                    kernel,
+                    CubeCount::Static(cubes, 1, 1),
+                )?;
+            }
         }
         self.counters.launches.fetch_add(1, Ordering::Relaxed);
         Ok(SubmittedExpression {
@@ -474,6 +511,9 @@ pub enum ExecutionError {
     Binding(BindingError),
     NullableOutput,
     ForeignDeviceBatch,
+    SelectionSourceMismatch,
+    InvalidProjectionName,
+    EmptyProjection,
     IntegerOverflow {
         row: usize,
     },
@@ -512,6 +552,15 @@ impl From<BindingError> for ExecutionError {
 impl fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::EmptyProjection => {
+                f.write_str("selected projection needs at least one named expression")
+            }
+            Self::SelectionSourceMismatch => {
+                f.write_str("selection belongs to a different batch snapshot")
+            }
+            Self::InvalidProjectionName => {
+                f.write_str("projection names must be nonempty and unique")
+            }
             Self::ForeignDeviceBatch => {
                 f.write_str("device batch belongs to a different runtime service")
             }

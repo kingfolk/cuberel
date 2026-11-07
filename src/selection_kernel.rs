@@ -36,8 +36,10 @@ use crate::cubecl_abi::LauncherGuard;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Stage {
     Scan,
+    ScanSelected,
     AddOffsets,
     Scatter,
+    ScatterSelected,
 }
 
 impl Stage {
@@ -46,8 +48,10 @@ impl Stage {
         use BufferIOAttr::{ReadOnly, ReadWrite, WriteOnly};
         match self {
             Self::Scan => &[ReadOnly, WriteOnly, WriteOnly],
+            Self::ScanSelected => &[ReadOnly, WriteOnly, WriteOnly, ReadOnly],
             Self::AddOffsets => &[ReadOnly, ReadWrite],
             Self::Scatter => &[ReadOnly, ReadOnly, ReadOnly, WriteOnly],
+            Self::ScatterSelected => &[ReadOnly, ReadOnly, ReadOnly, WriteOnly, ReadOnly, ReadOnly],
         }
     }
 }
@@ -104,7 +108,7 @@ impl KernelMetadata for SelectionKernel {
     fn id(&self) -> KernelId {
         KernelId::new::<Self>()
             .info((
-                1u32,
+                2u32, // selected stages extend the primitive ABI; invalidate v1 keys
                 self.stage,
                 self.settings.clone(),
                 self.client.name().to_string(),
@@ -145,13 +149,26 @@ impl CubeKernel for SelectionKernel {
         let zero = uint(s, 0);
         let in_range = s.register_with_result(&ULessThanOp::new(s.ctx_mut(), gid, rows));
         match self.stage {
-            Stage::Scan => {
+            Stage::Scan | Stage::ScanSelected => {
                 // Initialize every lane, including out-of-range tail lanes.
                 let local = s.create_local_mut(ty, None);
                 s.register(&StoreOp::new(s.ctx_mut(), local, zero));
                 branch(s, in_range, |body| {
-                    let value = load(body, buffers[0], gid);
-                    body.register(&StoreOp::new(body.ctx_mut(), local, value));
+                    let read = |active: &Scope| {
+                        let value = load(active, buffers[0], gid);
+                        active.register(&StoreOp::new(active.ctx_mut(), local, value));
+                    };
+                    if self.stage == Stage::ScanSelected {
+                        let count = load(body, buffers[3], zero);
+                        let active = body.register_with_result(&ULessThanOp::new(
+                            body.ctx_mut(),
+                            gid,
+                            count,
+                        ));
+                        branch(body, active, read);
+                    } else {
+                        read(body);
+                    }
                 });
                 let value = s.register_with_result(&LoadOp::new(s.ctx_mut(), local));
                 let array = ArrayType::get(s.ctx(), ty, self.settings.cube_dim.x as usize);
@@ -191,20 +208,37 @@ impl CubeKernel for SelectionKernel {
                 let rank = body.register_with_result(&IAddOp::new(body.ctx_mut(), rank, parent));
                 store(body, buffers[1], gid, rank);
             }),
-            Stage::Scatter => branch(s, in_range, |body| {
-                let keep = load(body, buffers[0], gid);
-                let one = uint(body, 1);
-                let keep = body.register_with_result(&IEqualOp::new(body.ctx_mut(), keep, one));
-                branch(body, keep, |selected| {
-                    let rank = load(selected, buffers[1], gid);
-                    let count = load(selected, buffers[2], zero);
-                    let valid = selected.register_with_result(&ULessThanOp::new(
-                        selected.ctx_mut(),
-                        rank,
-                        count,
-                    ));
-                    branch(selected, valid, |out| store(out, buffers[3], rank, gid));
-                });
+            Stage::Scatter | Stage::ScatterSelected => branch(s, in_range, |outer| {
+                let scatter = |body: &Scope| {
+                    let keep = load(body, buffers[0], gid);
+                    let one = uint(body, 1);
+                    let keep = body.register_with_result(&IEqualOp::new(body.ctx_mut(), keep, one));
+                    branch(body, keep, |selected| {
+                        let rank = load(selected, buffers[1], gid);
+                        let count = load(selected, buffers[2], zero);
+                        let valid = selected.register_with_result(&ULessThanOp::new(
+                            selected.ctx_mut(),
+                            rank,
+                            count,
+                        ));
+                        branch(selected, valid, |out| {
+                            let row = if self.stage == Stage::ScatterSelected {
+                                load(out, buffers[4], gid)
+                            } else {
+                                gid
+                            };
+                            store(out, buffers[3], rank, row);
+                        });
+                    });
+                };
+                if self.stage == Stage::ScatterSelected {
+                    let count = load(outer, buffers[5], zero);
+                    let active =
+                        outer.register_with_result(&ULessThanOp::new(outer.ctx_mut(), gid, count));
+                    branch(outer, active, scatter);
+                } else {
+                    scatter(outer);
+                }
             }),
         }
         s.register(&ReturnOp::new(s.ctx_mut()));

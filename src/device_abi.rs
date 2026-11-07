@@ -39,11 +39,15 @@ pub struct KernelDeclaration {
     buffers: Vec<Value>,
     parameters: Vec<(ParameterId, Value)>,
     parameter_validities: Vec<(ParameterId, Value)>,
+    selected: Option<(Value, Value)>,
     row_count_raw: Value,
     row_count: Value,
 }
 
 impl KernelDeclaration {
+    pub(crate) fn selected(&self) -> Option<(Value, Value)> {
+        self.selected
+    }
     pub fn layout(&self) -> &BindingLayout {
         &self.layout
     }
@@ -152,6 +156,21 @@ impl BindingLayout {
         client: &Client,
         settings: KernelSettings,
     ) -> Result<KernelDeclaration, BindingError> {
+        self.declare_impl(client, settings, false)
+    }
+    pub(crate) fn declare_selected(
+        &self,
+        client: &Client,
+        settings: KernelSettings,
+    ) -> Result<KernelDeclaration, BindingError> {
+        self.declare_impl(client, settings, true)
+    }
+    fn declare_impl(
+        &self,
+        client: &Client,
+        settings: KernelSettings,
+        selected: bool,
+    ) -> Result<KernelDeclaration, BindingError> {
         validate_settings(self, &settings)?;
         let mut builder = KernelBuilder::new(settings);
         builder.runtime_properties(client.target_properties().clone());
@@ -161,6 +180,10 @@ impl BindingLayout {
             let ty = slot.element_type().elem_type().to_type(builder.scope.ctx());
             buffers.push(builder.buffer(ty));
         }
+        let selected = selected.then(|| {
+            let ty = ElemType::UInt(UIntKind::U32).to_type(builder.scope.ctx());
+            (builder.buffer(ty), builder.buffer(ty))
+        });
         let mut parameters = Vec::new();
         let mut parameter_validities = Vec::new();
         let mut raw_count = None;
@@ -191,6 +214,7 @@ impl BindingLayout {
             buffers,
             parameters,
             parameter_validities,
+            selected,
             row_count_raw: raw_count,
             row_count: count,
         })
@@ -303,7 +327,41 @@ impl ValidatedBindings {
         kernel: K,
         count: CubeCount,
     ) -> Result<Submission, BindingError> {
+        // SAFETY: forwarded caller contract; the ordinary ABI has no selection.
+        unsafe { self.launch_impl(client, settings, kernel, count, None) }
+    }
+    /// Private selected ABI appends source indices and count. Their initialized
+    /// prefix is proven by DeviceSelection, not by DeviceBuffer metadata.
+    pub(crate) unsafe fn launch_selected<K: CubeKernel>(
+        self,
+        client: &Client,
+        settings: KernelSettings,
+        kernel: K,
+        count: CubeCount,
+        selected: (Handle, Handle),
+    ) -> Result<Submission, BindingError> {
+        // SAFETY: private selected emitter guards count before loading indices.
+        unsafe { self.launch_impl(client, settings, kernel, count, Some(selected)) }
+    }
+    unsafe fn launch_impl<K: CubeKernel>(
+        self,
+        client: &Client,
+        settings: KernelSettings,
+        kernel: K,
+        count: CubeCount,
+        selected: Option<(Handle, Handle)>,
+    ) -> Result<Submission, BindingError> {
         validate_settings(&self.layout, &settings)?;
+        if let Some((indices, selected_count)) = &selected
+            && (indices.service != client.service_id()
+                || selected_count.service != client.service_id()
+                || indices.size_in_used() != self.extent.byte_len() as u64
+                || selected_count.size_in_used() != 4)
+        {
+            return Err(BindingError::SettingsMismatch {
+                field: "selection service/range",
+            });
+        }
         let id = kernel.id();
         if id.address_type != settings.address_type
             || kernel.address_type() != settings.address_type.unsigned_type()
@@ -342,6 +400,16 @@ impl ValidatedBindings {
             let buffer =
                 unsafe { BufferArg::from_raw_parts(handle, self.extent.row_count() as usize) };
             launcher.register_buffer(buffer, slot.element_type().size_bytes() as usize);
+        }
+        if let Some((indices, selected_count)) = selected {
+            for (handle, len) in [
+                (indices, self.extent.row_count() as usize),
+                (selected_count, 1),
+            ] {
+                launcher.declare_io(BufferIOAttr::ReadOnly);
+                // SAFETY: private initialized count and count-guarded index prefix.
+                launcher.register_buffer(unsafe { BufferArg::from_raw_parts(handle, len) }, 4);
+            }
         }
         for scalar in self.scalars {
             match scalar {

@@ -11,6 +11,9 @@
 //! [`Executor::upload`] creates an immutable [`DeviceBatch`] for repeated
 //! [`Executor::execute_resident`] / [`Executor::select_resident`] calls;
 //! [`DeviceResult::complete`] and materialize expose explicit blocking boundaries.
+//! [`Executor::filter_selected`] refines a selection in original row coordinates;
+//! [`Executor::project_selected`] computes only its active rows and returns a
+//! [`DeviceProjection`] for compact host or Arrow export.
 //!
 //! Backend features:
 //! - `cpu` (default): CubeCL's LLVM-based CPU runtime.
@@ -35,6 +38,7 @@ mod expr;
 mod input;
 mod resident;
 mod schema;
+mod selected;
 mod selection;
 mod selection_kernel;
 
@@ -48,4 +52,5 @@ pub use expr::{
 pub use input::{Batch, ColumnData, Parameters, ScalarValue};
 pub use resident::{DeviceBatch, DeviceResult, ExecutionStats, HostColumn};
 pub use schema::{ColumnId, DataType, Field, ParameterId, Schema};
+pub use selected::{DeviceProjection, SelectedColumn};
 pub use selection::{DeviceSelection, SelectionStats};

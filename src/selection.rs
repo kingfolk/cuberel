@@ -39,10 +39,17 @@ pub struct DeviceSelection {
     // drop. CubeCL's queued bindings own their memory if this object is dropped.
     retained: Vec<Handle>,
     predicate: Option<Arc<SubmittedExpression>>,
+    dependency: Option<Arc<crate::DeviceProjection>>,
     stats: SelectionStats,
 }
 
 impl DeviceSelection {
+    pub(crate) fn indices_handle(&self) -> Handle {
+        self.indices.clone().expect("nonempty selection")
+    }
+    pub(crate) fn count_handle(&self) -> Handle {
+        self.count.clone().expect("nonempty selection")
+    }
     pub fn capacity(&self) -> u32 {
         self.capacity
     }
@@ -71,6 +78,9 @@ impl DeviceSelection {
         }
         block_on(self.client.sync_buffers(self.retained.iter()))
             .map_err(ExecutionError::Backend)?;
+        if let Some(dependency) = &self.dependency {
+            dependency.complete()?;
+        }
         if let Some(predicate) = &self.predicate {
             predicate.check_errors(&self.client, &self.counters)?;
         }
@@ -161,6 +171,7 @@ impl Executor {
             predicate.values.clone(),
             predicate.retained.clone(),
             Some(predicate),
+            None,
         )?;
         selection.source = source;
         Ok(selection)
@@ -181,7 +192,44 @@ impl Executor {
             self.upload_bytes(&bytes)
         });
         let retained = handle.iter().cloned().collect();
-        self.submit_selection(plan, handle, retained, None)
+        self.submit_selection(plan, handle, retained, None, None)
+    }
+
+    /// Apply another WHERE only to currently selected rows. Results keep stable
+    /// original batch row IDs; parent predicate/backend failures remain observable.
+    pub fn filter_selected(
+        &self,
+        program: &KernelProgram,
+        batch: &DeviceBatch,
+        selected: &DeviceSelection,
+        parameters: &Parameters,
+    ) -> Result<DeviceSelection, ExecutionError> {
+        self.require_output_type(program, DataType::Bool)?;
+        let plan = SelectionPlan::new(&self.client, batch.row_count(), self.cube_size())?;
+        if batch.row_count() != 0 && self.client.properties().hardware.max_bindings < 7 {
+            return Err(ExecutionError::UnsupportedDevice {
+                reason: "nested selection needs 7 buffer bindings including metadata",
+            });
+        }
+        let predicate = Arc::new(self.project_selected(
+            batch,
+            selected,
+            &[("_predicate", program)],
+            parameters,
+        )?);
+        let submitted = &predicate.outputs[0].submitted;
+        let mut retained = selected.retained.clone();
+        retained.extend(submitted.retained.iter().cloned());
+        let mut selection = self.submit_selection(
+            plan,
+            submitted.values.clone(),
+            retained,
+            None,
+            Some(selected),
+        )?;
+        selection.source = batch.source.clone();
+        selection.dependency = Some(predicate);
+        Ok(selection)
     }
 
     fn submit_selection(
@@ -190,6 +238,7 @@ impl Executor {
         mask: Option<Handle>,
         mut retained: Vec<Handle>,
         predicate: Option<Arc<SubmittedExpression>>,
+        selected: Option<&DeviceSelection>,
     ) -> Result<DeviceSelection, ExecutionError> {
         let mut selection = DeviceSelection {
             client: self.client.clone(),
@@ -200,6 +249,7 @@ impl Executor {
             count: None,
             retained: Vec::new(),
             predicate,
+            dependency: None,
             stats: plan.stats,
         };
         if plan.rows == 0 {
@@ -208,12 +258,27 @@ impl Executor {
         let mask = mask.expect("validated nonempty mask");
         let mut levels: Vec<(Handle, Handle)> = Vec::with_capacity(plan.levels.len());
         let mut input = mask.clone();
-        for &len in &plan.levels {
+        for (level, &len) in plan.levels.iter().enumerate() {
             let ranks = self.client.empty(len as usize * 4);
             let totals = self
                 .client
                 .empty(len.div_ceil(self.cube_size()) as usize * 4);
-            self.selection_launch(Stage::Scan, len, &[input, ranks.clone(), totals.clone()]);
+            if level == 0
+                && let Some(selected) = selected
+            {
+                self.selection_launch(
+                    Stage::ScanSelected,
+                    len,
+                    &[
+                        input,
+                        ranks.clone(),
+                        totals.clone(),
+                        selected.count_handle(),
+                    ],
+                );
+            } else {
+                self.selection_launch(Stage::Scan, len, &[input, ranks.clone(), totals.clone()]);
+            }
             retained.extend([ranks.clone(), totals.clone()]);
             input = totals.clone();
             levels.push((ranks, totals));
@@ -230,11 +295,26 @@ impl Executor {
         let indices = self.client.empty(plan.rows as usize * 4);
         // Scatter is a device consumer of count: no host count read is needed
         // to schedule it or to bounds-check its selected output positions.
-        self.selection_launch(
-            Stage::Scatter,
-            plan.rows,
-            &[mask, levels[0].0.clone(), count.clone(), indices.clone()],
-        );
+        if let Some(selected) = selected {
+            self.selection_launch(
+                Stage::ScatterSelected,
+                plan.rows,
+                &[
+                    mask,
+                    levels[0].0.clone(),
+                    count.clone(),
+                    indices.clone(),
+                    selected.indices_handle(),
+                    selected.count_handle(),
+                ],
+            );
+        } else {
+            self.selection_launch(
+                Stage::Scatter,
+                plan.rows,
+                &[mask, levels[0].0.clone(), count.clone(), indices.clone()],
+            );
+        }
         retained.push(indices.clone());
         selection.indices = Some(indices);
         selection.count = Some(count);
