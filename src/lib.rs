@@ -8,6 +8,9 @@
 //! [`Executor::execute_predicate`] for three-valued Bool projections, or
 //! [`Executor::execute_mask`] for dense WHERE flags, or [`Executor::select`]
 //! for stable device selection indices and a device-side count.
+//! [`Executor::upload`] creates an immutable [`DeviceBatch`] for repeated
+//! [`Executor::execute_resident`] / [`Executor::select_resident`] calls;
+//! [`DeviceResult::complete`] and materialize expose explicit blocking boundaries.
 //!
 //! Backend features:
 //! - `cpu` (default): CubeCL's LLVM-based CPU runtime.
@@ -30,6 +33,7 @@ mod error;
 mod executor;
 mod expr;
 mod input;
+mod resident;
 mod schema;
 mod selection;
 mod selection_kernel;
@@ -42,5 +46,6 @@ pub use expr::{
     param, prepare, prepare_with_limits,
 };
 pub use input::{Batch, ColumnData, Parameters, ScalarValue};
+pub use resident::{DeviceBatch, DeviceResult, ExecutionStats, HostColumn};
 pub use schema::{ColumnId, DataType, Field, ParameterId, Schema};
 pub use selection::{DeviceSelection, SelectionStats};

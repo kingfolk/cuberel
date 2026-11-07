@@ -5,9 +5,10 @@ use std::sync::Arc;
 use cubecl::{future::block_on, prelude::Client, server::Handle};
 
 use crate::{
-    Batch, DataType, ExecutionError, Executor, KernelProgram, Parameters,
+    Batch, DataType, DeviceBatch, ExecutionError, Executor, KernelProgram, Parameters,
     abi::{BindingError, BindingLayout},
-    executor::{SubmittedExpression, read_plane},
+    executor::SubmittedExpression,
+    resident::ExecutionCounters,
     selection_kernel::{SelectionKernel, Stage},
 };
 
@@ -29,6 +30,7 @@ pub struct SelectionStats {
 #[derive(Clone)]
 pub struct DeviceSelection {
     client: Client,
+    counters: Arc<ExecutionCounters>,
     capacity: u32,
     source: Arc<()>,
     indices: Option<Handle>,
@@ -49,10 +51,15 @@ impl DeviceSelection {
         self.stats
     }
 
-    /// Equal only for clones of the same source snapshot. Two separately
-    /// uploaded equal masks/batches are distinct sources.
+    /// Selections from the same resident snapshot (and selection clones) share
+    /// a source. Separate host select/compact calls and uploads have fresh identities.
     pub fn same_source(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.source, &other.source)
+    }
+
+    /// Whether this selection uses the original row coordinates of this batch.
+    pub fn belongs_to(&self, batch: &DeviceBatch) -> bool {
+        Arc::ptr_eq(&self.source, &batch.source)
     }
 
     /// Complete all stages and predicate error checks, then read the device
@@ -65,9 +72,14 @@ impl DeviceSelection {
         block_on(self.client.sync_buffers(self.retained.iter()))
             .map_err(ExecutionError::Backend)?;
         if let Some(predicate) = &self.predicate {
-            predicate.check_errors(&self.client)?;
+            predicate.check_errors(&self.client, &self.counters)?;
         }
-        let bytes = read_plane(&self.client, self.count.clone().expect("nonempty count"), 4)?;
+        self.counters
+            .count_reads
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let bytes =
+            self.counters
+                .read(&self.client, self.count.clone().expect("nonempty count"), 4)?;
         let count = u32::from_ne_bytes(bytes.as_chunks::<4>().0[0]);
         if count > self.capacity {
             return Err(ExecutionError::InvalidSelectionCount {
@@ -90,7 +102,9 @@ impl DeviceSelection {
         let handle = self.indices.clone().expect("nonempty indices");
         // Narrow the logical handle, never read the uninitialized capacity tail.
         let handle = handle.offset_end(u64::from(self.capacity - count) * 4);
-        let bytes = read_plane(&self.client, handle, count as usize * 4)?;
+        let bytes = self
+            .counters
+            .read(&self.client, handle, count as usize * 4)?;
         Ok(bytes
             .as_chunks::<4>()
             .0
@@ -116,14 +130,40 @@ impl Executor {
         let host = layout.bind_host(batch, parameters)?;
         let plan = SelectionPlan::new(&self.client, host.extent().row_count(), self.cube_size())?;
         let predicate = Arc::new(self.submit_expression(program, batch, parameters)?);
+        self.selection_from_predicate(plan, predicate, Arc::new(()))
+    }
+
+    /// Select from an existing immutable snapshot without uploading columns or
+    /// reading predicate values/count. Selections preserve the batch identity.
+    pub fn select_resident(
+        &self,
+        program: &KernelProgram,
+        batch: &DeviceBatch,
+        parameters: &Parameters,
+    ) -> Result<DeviceSelection, ExecutionError> {
+        self.require_output_type(program, DataType::Bool)?;
+        batch.validate(&self.client, &BindingLayout::new(program), parameters)?;
+        let plan = SelectionPlan::new(&self.client, batch.row_count(), self.cube_size())?;
+        let predicate = Arc::new(self.submit_resident_expression(program, batch, parameters)?);
+        self.selection_from_predicate(plan, predicate, batch.source.clone())
+    }
+
+    fn selection_from_predicate(
+        &self,
+        plan: SelectionPlan,
+        predicate: Arc<SubmittedExpression>,
+        source: Arc<()>,
+    ) -> Result<DeviceSelection, ExecutionError> {
         // The expression emitter canonicalizes invalid Bool payload to false,
         // so its value plane is already exactly the WHERE mask.
-        self.submit_selection(
+        let mut selection = self.submit_selection(
             plan,
             predicate.values.clone(),
             predicate.retained.clone(),
             Some(predicate),
-        )
+        )?;
+        selection.source = source;
+        Ok(selection)
     }
 
     /// Upload a validated 0/1 mask and produce a pending device selection.
@@ -138,7 +178,7 @@ impl Executor {
         }
         let handle = (rows != 0).then(|| {
             let bytes: Vec<u8> = mask.iter().flat_map(|v| v.to_ne_bytes()).collect();
-            self.client.create_from_slice(&bytes)
+            self.upload_bytes(&bytes)
         });
         let retained = handle.iter().cloned().collect();
         self.submit_selection(plan, handle, retained, None)
@@ -153,6 +193,7 @@ impl Executor {
     ) -> Result<DeviceSelection, ExecutionError> {
         let mut selection = DeviceSelection {
             client: self.client.clone(),
+            counters: self.counters.clone(),
             capacity: plan.rows,
             source: Arc::new(()),
             indices: None,
@@ -212,6 +253,9 @@ impl Executor {
         // Handles are private, initialized inputs/fresh outputs, same service,
         // with exact lengths prescribed by the stage layout.
         kernel.launch(rows, buffers);
+        self.counters
+            .launches
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -294,7 +338,7 @@ mod tests {
     test,
     any(feature = "cpu", all(feature = "metal", target_vendor = "apple"))
 ))]
-mod completion_tests {
+pub(crate) mod completion_tests {
     use crate::{ExecutionError, Executor, cubecl_abi::LauncherGuard};
     use cubecl::{
         Device,
@@ -336,6 +380,27 @@ mod completion_tests {
             builder.build()
         }
     }
+    pub(crate) fn rejected_handle(
+        client: &Client,
+        settings: KernelSettings,
+    ) -> cubecl::server::Handle {
+        let marker = client.empty(4);
+        let kernel = RejectedOutput {
+            client: client.clone(),
+            settings: settings.clone(),
+        };
+        let mut guard = LauncherGuard(Some(KernelLauncher::new(settings)));
+        let launcher = guard.0.as_mut().unwrap();
+        launcher.declare_io(BufferIOAttr::WriteOnly);
+        // SAFETY: fresh write-only U32 allocation of exactly one element.
+        launcher.register_buffer(unsafe { BufferArg::from_raw_parts(marker.clone(), 1) }, 4);
+        guard
+            .0
+            .take()
+            .unwrap()
+            .launch(CubeCount::Static(1, 1, 1), kernel, client);
+        marker
+    }
     fn exercise(device: Device) {
         let client = device.client();
         let executor = Executor::new(client.clone()).unwrap();
@@ -354,21 +419,7 @@ mod completion_tests {
                 capacity: 3
             })
         ));
-        let marker = client.empty(4);
-        let kernel = RejectedOutput {
-            client: client.clone(),
-            settings: executor.settings(),
-        };
-        let mut guard = LauncherGuard(Some(KernelLauncher::new(executor.settings())));
-        let launcher = guard.0.as_mut().unwrap();
-        launcher.declare_io(BufferIOAttr::WriteOnly);
-        // SAFETY: fresh write-only U32 allocation of exactly one element.
-        launcher.register_buffer(unsafe { BufferArg::from_raw_parts(marker.clone(), 1) }, 4);
-        guard
-            .0
-            .take()
-            .unwrap()
-            .launch(CubeCount::Static(1, 1, 1), kernel, &client);
+        let marker = rejected_handle(&client, executor.settings());
         selection.retained.push(marker);
         assert!(matches!(
             selection.selected_count(),

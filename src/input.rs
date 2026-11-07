@@ -85,6 +85,11 @@ impl<'a> Batch<'a> {
     pub fn row_count(&self) -> usize {
         self.row_count
     }
+    pub(crate) fn columns(&self) -> impl Iterator<Item = (&str, ColumnData<'a>)> {
+        self.columns
+            .iter()
+            .map(|(name, data)| (name.as_str(), *data))
+    }
     pub(crate) fn column(&self, name: &str) -> Option<ColumnData<'a>> {
         self.columns.get(name).copied()
     }
