@@ -89,6 +89,100 @@ No query `#[cube]`, generated Rust, runtime rustc or host expression interpreter
 is involved. Stage resource order is shared by declaration and launcher, including
 read/write attributes and unwind-safe launcher discard.
 
+### Equivalent CubeCL Rust for the block scan
+
+The following is a readable CubeCL Rust rendering of `Stage::Scan` in
+`src/selection_kernel.rs`. It illustrates the algorithm; it is not an additional
+production kernel or a dump of the generated IR. Launch setup is omitted:
+use a one-dimensional workgroup with exactly `tile` lanes, matching the runtime
+IR settings, and allocate one block count per launched workgroup.
+
+```rust
+use cubecl::prelude::{ABSOLUTE_POS, CUBE_POS, Shared, UNIT_POS, cube, sync_cube};
+
+#[cube(launch)]
+fn block_scan(
+    input: &[u32],
+    ranks: &mut [u32],
+    block_counts: &mut [u32],
+    row_count: u32,
+    #[comptime] tile: usize,
+) {
+    let gid = ABSOLUTE_POS as usize;
+    let lid = UNIT_POS as usize;
+    let block = CUBE_POS as usize;
+
+    // Tail lanes contribute zero but must still reach every barrier.
+    let mut value = 0u32;
+    if gid < row_count as usize {
+        value = input[gid];
+    }
+
+    let mut shared = Shared::<[u32]>::new_slice(tile);
+    shared[lid] = value;
+    sync_cube();
+
+    let mut distance = 1usize;
+    while distance < tile {
+        let current = shared[lid];
+        let mut left = 0u32;
+        if lid >= distance {
+            left = shared[lid - distance];
+        }
+        let sum = current + left;
+
+        // All lanes finish reading the old round before any overwrite.
+        sync_cube();
+        shared[lid] = sum;
+        // Make this round's writes visible before the next round reads.
+        sync_cube();
+        distance *= 2;
+    }
+
+    let inclusive = shared[lid];
+    if gid < row_count as usize {
+        ranks[gid] = inclusive - value;
+    }
+    if lid == tile - 1 {
+        block_counts[block] = inclusive;
+    }
+}
+```
+
+For `tile=4`, one block evolves as follows. Each round reads the previous
+round's values, not partially updated values from its neighbours:
+
+```text
+input / initial shared:  [0, 1, 0, 1]
+distance = 1:           [0, 1, 1, 1]
+distance = 2:           [0, 1, 1, 2]  <- inclusive prefix sum
+subtract original:     [0, 0, 1, 1]  <- exclusive block-local rank
+block_counts[block] = 2
+```
+
+A rank counts selected rows strictly before the current row within its block.
+Only selected rows use that rank as an output position; unselected rows may
+share ranks without causing conflicting writes. The last lane's inclusive sum
+includes every input in the block, so only that lane writes its block count.
+Tail padding is zero, so this remains correct for a partial final block.
+Never return early for an out-of-range lane before the barriers.
+
+| CubeCL Rust operation | Runtime IR construction |
+|---|---|
+| `Shared::new_slice(tile)` | `ArrayType` and `Scope::create_shared` |
+| Read `shared[index]` | `IndexOp` and `LoadOp` |
+| `current + left` | `IAddOp` |
+| `sync_cube()` | `SyncOp(SyncScope::Cube)` |
+| Array assignment | `IndexOp` and `StoreOp` |
+| `inclusive - value` | `ISubOp` |
+
+The production emitter unfolds `distance=1,2,4,...` while constructing IR on
+the host; its Rust loop is not a device loop. It also uses a clamped index and
+`SelectOp` for the left-hand read, instead of the conditional read shown above.
+Both contribute zero when `lid < distance`. All actual data reads, sums, barriers
+and output writes execute on the selected device. The `#[cube]` attribute above
+is explanatory syntax only; the production path continues to build IR directly.
+
 ## Errors, limits and identity
 
 Predicate I32 arithmetic keeps its existing eager checked semantics. Even if
