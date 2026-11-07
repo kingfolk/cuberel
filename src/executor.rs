@@ -19,10 +19,11 @@ use cubecl::{
 };
 
 use crate::{
-    Batch, DataType, KernelProgram, Parameters,
+    Batch, DataType, DeviceBatch, KernelProgram, Parameters,
     abi::{BindingError, BindingLayout, BufferSource},
     cubecl_abi::DeviceBuffer,
     emitter::{ExpressionIdentity, ExpressionKernel},
+    resident::ExecutionCounters,
 };
 
 /// A selected device and a fixed one-dimensional workgroup size. No CPU fallback.
@@ -31,6 +32,7 @@ use crate::{
 pub struct Executor {
     pub(crate) client: Client,
     cube_size: u32,
+    pub(crate) counters: Arc<ExecutionCounters>,
     pub(crate) define_count: Arc<AtomicUsize>,
 }
 
@@ -56,6 +58,7 @@ impl Executor {
         Ok(Self {
             client,
             cube_size,
+            counters: Arc::new(ExecutionCounters::default()),
             define_count: Arc::new(AtomicUsize::new(0)),
         })
     }
@@ -251,20 +254,7 @@ impl Executor {
         parameters: &Parameters,
     ) -> Result<OutputBytes, ExecutionError> {
         let output = self.submit_expression(program, batch, parameters)?;
-        let values = match &output.values {
-            Some(handle) => read_plane(&self.client, handle.clone(), output.rows as usize * 4)?,
-            None => Bytes::from_bytes_vec(Vec::new()),
-        };
-        let validity = if program.output_nullable() {
-            Some(match &output.validity {
-                Some(handle) => read_plane(&self.client, handle.clone(), output.rows as usize * 4)?,
-                None => Bytes::from_bytes_vec(Vec::new()),
-            })
-        } else {
-            None
-        };
-        output.check_errors(&self.client)?;
-        Ok(OutputBytes { values, validity })
+        output.materialize_bytes(&self.client, &self.counters)
     }
 
     // Submission owns all inputs/outputs until the caller observes completion.
@@ -276,16 +266,29 @@ impl Executor {
         parameters: &Parameters,
     ) -> Result<SubmittedExpression, ExecutionError> {
         let layout = BindingLayout::new(program);
-        let host = layout.bind_host(batch, parameters)?;
-        let rows = host.extent().row_count();
+        layout.bind_host(batch, parameters)?;
+        self.preflight_expression(&layout, batch.row_count() as u64)?;
+        // Preserve the convenience API's upload-only-referenced-columns behavior.
+        let mut active = Batch::new(batch.row_count());
+        for slot in layout.buffers() {
+            if let BufferSource::Column(_) = slot.source() {
+                active = active
+                    .with_column(slot.name(), batch.column(slot.name()).expect("validated"))
+                    .map_err(BindingError::from)?;
+            }
+        }
+        let device = self.upload(&active)?;
+        self.submit_resident_expression(program, &device, parameters)
+    }
+
+    pub(crate) fn preflight_expression(
+        &self,
+        layout: &BindingLayout,
+        rows: u64,
+    ) -> Result<(), ExecutionError> {
+        let rows = layout.extent(rows)?.row_count();
         if rows == 0 {
-            return Ok(SubmittedExpression {
-                rows,
-                values: None,
-                validity: None,
-                error: None,
-                retained: Vec::new(),
-            });
+            return Ok(());
         }
         let hw = &self.client.properties().hardware;
         // Each buffer plus the packed scalar/metadata info buffer needs a binding.
@@ -301,6 +304,30 @@ impl Executor {
                 max: hw.max_cube_count.0,
             });
         }
+        Ok(())
+    }
+
+    pub(crate) fn submit_resident_expression(
+        &self,
+        program: &KernelProgram,
+        batch: &DeviceBatch,
+        parameters: &Parameters,
+    ) -> Result<SubmittedExpression, ExecutionError> {
+        let layout = BindingLayout::new(program);
+        batch.validate(&self.client, &layout, parameters)?;
+        self.preflight_expression(&layout, u64::from(batch.row_count()))?;
+        let rows = batch.row_count();
+        if rows == 0 {
+            return Ok(SubmittedExpression {
+                rows,
+                values: None,
+                validity: None,
+                error: None,
+                retained: Vec::new(),
+            });
+        }
+        let byte_len = layout.extent(u64::from(rows))?.byte_len();
+        let cubes = rows.div_ceil(self.cube_size);
         let mut buffers = Vec::with_capacity(layout.buffers().len());
         let mut retained = Vec::with_capacity(layout.buffers().len());
         let mut output = None;
@@ -308,30 +335,20 @@ impl Executor {
         let mut output_error = None;
         for slot in layout.buffers() {
             let handle = match slot.source() {
-                BufferSource::Column(id) => {
-                    let (column, _) = host.column_data(id);
-                    let bytes = column.to_bytes();
-                    self.client.create_from_slice(&bytes)
-                }
-                BufferSource::ColumnValidity(id) => {
-                    let (_, validity) = host.column_data(id);
-                    let bytes: Vec<u8> = (0..rows as usize)
-                        .flat_map(|i| validity.map_or(1, |v| v[i]).to_ne_bytes())
-                        .collect();
-                    self.client.create_from_slice(&bytes)
-                }
+                BufferSource::Column(_) => batch.value_handle(slot.name()),
+                BufferSource::ColumnValidity(_) => batch.validity_handle(slot.name()),
                 BufferSource::Output => {
-                    let handle = self.client.empty(host.extent().byte_len());
+                    let handle = self.client.empty(byte_len);
                     output = Some(handle.clone());
                     handle
                 }
                 BufferSource::OutputError => {
-                    let handle = self.client.empty(host.extent().byte_len());
+                    let handle = self.client.empty(byte_len);
                     output_error = Some(handle.clone());
                     handle
                 }
                 BufferSource::OutputValidity => {
-                    let handle = self.client.empty(host.extent().byte_len());
+                    let handle = self.client.empty(byte_len);
                     output_validity = Some(handle.clone());
                     handle
                 }
@@ -362,6 +379,7 @@ impl Executor {
                 CubeCount::Static(cubes, 1, 1),
             )?;
         }
+        self.counters.launches.fetch_add(1, Ordering::Relaxed);
         Ok(SubmittedExpression {
             rows,
             values: output,
@@ -381,9 +399,49 @@ pub(crate) struct SubmittedExpression {
 }
 
 impl SubmittedExpression {
-    pub(crate) fn check_errors(&self, client: &Client) -> Result<(), ExecutionError> {
+    pub(crate) fn complete(
+        &self,
+        client: &Client,
+        counters: &ExecutionCounters,
+    ) -> Result<(), ExecutionError> {
+        if self.rows != 0 {
+            cubecl::future::block_on(client.sync_buffers(self.retained.iter()))
+                .map_err(ExecutionError::Backend)?;
+        }
+        self.check_errors(client, counters)
+    }
+    pub(crate) fn materialize_bytes(
+        &self,
+        client: &Client,
+        counters: &ExecutionCounters,
+    ) -> Result<OutputBytes, ExecutionError> {
+        self.complete(client, counters)?;
+        self.read_bytes(client, counters)
+    }
+    pub(crate) fn read_bytes(
+        &self,
+        client: &Client,
+        counters: &ExecutionCounters,
+    ) -> Result<OutputBytes, ExecutionError> {
+        let values = match &self.values {
+            Some(handle) => counters.read(client, handle.clone(), self.rows as usize * 4)?,
+            None => Bytes::from_bytes_vec(Vec::new()),
+        };
+        let validity = self
+            .validity
+            .as_ref()
+            .map(|handle| counters.read(client, handle.clone(), self.rows as usize * 4))
+            .transpose()?;
+        Ok(OutputBytes { values, validity })
+    }
+
+    pub(crate) fn check_errors(
+        &self,
+        client: &Client,
+        counters: &ExecutionCounters,
+    ) -> Result<(), ExecutionError> {
         if let Some(handle) = &self.error {
-            let flags = read_plane(client, handle.clone(), self.rows as usize * 4)?;
+            let flags = counters.read(client, handle.clone(), self.rows as usize * 4)?;
             for (row, chunk) in flags.as_chunks::<4>().0.iter().enumerate() {
                 match u32::from_ne_bytes(*chunk) {
                     0 => {}
@@ -415,6 +473,7 @@ pub(crate) fn read_plane(
 pub enum ExecutionError {
     Binding(BindingError),
     NullableOutput,
+    ForeignDeviceBatch,
     IntegerOverflow {
         row: usize,
     },
@@ -453,6 +512,9 @@ impl From<BindingError> for ExecutionError {
 impl fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ForeignDeviceBatch => {
+                f.write_str("device batch belongs to a different runtime service")
+            }
             Self::NullableOutput => {
                 f.write_str("nullable numeric output requires its matching nullable execution API")
             }
@@ -487,9 +549,9 @@ impl fmt::Display for ExecutionError {
     }
 }
 
-struct OutputBytes {
-    values: Bytes,
-    validity: Option<Bytes>,
+pub(crate) struct OutputBytes {
+    pub(crate) values: Bytes,
+    pub(crate) validity: Option<Bytes>,
 }
 
 /// Owned F32 projection with one 0/1 validity flag per row.
@@ -500,6 +562,9 @@ pub struct NullableF32 {
     validity: Vec<u32>,
 }
 impl NullableF32 {
+    pub(crate) fn new(values: Vec<f32>, validity: Vec<u32>) -> Self {
+        Self { values, validity }
+    }
     #[cfg(feature = "arrow")]
     pub(crate) fn into_parts(self) -> (Vec<f32>, Vec<u32>) {
         (self.values, self.validity)
@@ -533,6 +598,9 @@ pub struct NullableBool {
     validity: Vec<u32>,
 }
 impl NullableBool {
+    pub(crate) fn new(values: Vec<u32>, validity: Vec<u32>) -> Self {
+        Self { values, validity }
+    }
     #[cfg(feature = "arrow")]
     pub(crate) fn into_parts(self) -> (Vec<u32>, Vec<u32>) {
         (self.values, self.validity)
@@ -565,6 +633,9 @@ pub struct NullableI32 {
     validity: Vec<u32>,
 }
 impl NullableI32 {
+    pub(crate) fn new(values: Vec<i32>, validity: Vec<u32>) -> Self {
+        Self { values, validity }
+    }
     #[cfg(feature = "arrow")]
     pub(crate) fn into_parts(self) -> (Vec<i32>, Vec<u32>) {
         (self.values, self.validity)
@@ -589,7 +660,7 @@ impl NullableI32 {
     }
 }
 
-fn decode_validity(bytes: &[u8]) -> Result<Vec<u32>, ExecutionError> {
+pub(crate) fn decode_validity(bytes: &[u8]) -> Result<Vec<u32>, ExecutionError> {
     bytes
         .as_chunks::<4>()
         .0

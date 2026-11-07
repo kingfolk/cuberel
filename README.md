@@ -267,3 +267,10 @@ allows GPU access; do not replace them with a CPU fallback or a passing skip.
 planning documents and agent instructions intentionally excluded by exact `.gitignore` entries.
 Product source, tests, this README and
 `Cargo.lock` remain eligible for version control.
+
+## Resident device batches
+
+Upload an immutable snapshot once with `Executor::upload`, reuse it through
+`execute_resident`, `execute_many_resident` and `select_resident`, then explicitly
+complete/materialize. See [device batch contracts and costs](docs/device-batch.md)
+and `cargo run --all-features --example resident_batch -- cpu` (or `metal`).

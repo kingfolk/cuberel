@@ -540,19 +540,6 @@ impl<'a> HostBindings<'a> {
     pub fn column_validities(&self) -> &[Option<&'a [u32]>] {
         &self.column_validities
     }
-    pub(crate) fn column_data(&self, id: ColumnId) -> (ColumnData<'a>, Option<&'a [u32]>) {
-        let index = self
-            .layout
-            .buffers
-            .iter()
-            .filter_map(|slot| match slot.source {
-                BufferSource::Column(id) => Some(id),
-                _ => None,
-            })
-            .position(|value| value == id)
-            .expect("layout column");
-        (self.columns[index], self.column_validities[index])
-    }
     pub fn scalars(&self) -> &[ScalarArgument] {
         &self.scalars
     }
