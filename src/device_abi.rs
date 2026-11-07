@@ -359,7 +359,7 @@ impl ValidatedBindings {
     }
 }
 
-struct LauncherGuard(Option<KernelLauncher>);
+pub(crate) struct LauncherGuard(pub(crate) Option<KernelLauncher>);
 impl Drop for LauncherGuard {
     fn drop(&mut self) {
         if let Some(launcher) = self.0.take() {
