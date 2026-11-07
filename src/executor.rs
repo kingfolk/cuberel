@@ -15,7 +15,7 @@ use cubecl::{
         AddressType, Client, CubeCount, CubeDim, ExecutionMode, KernelId, KernelMetadata,
         KernelSettings,
     },
-    server::ServerError,
+    server::{Handle, ServerError},
 };
 
 use crate::{
@@ -29,9 +29,9 @@ use crate::{
 /// Programs remain independent of the executor and can be reused with new inputs.
 #[derive(Clone)]
 pub struct Executor {
-    client: Client,
+    pub(crate) client: Client,
     cube_size: u32,
-    define_count: Arc<AtomicUsize>,
+    pub(crate) define_count: Arc<AtomicUsize>,
 }
 
 impl Executor {
@@ -95,7 +95,7 @@ impl Executor {
         kernel.identity()
     }
 
-    fn settings(&self) -> KernelSettings {
+    pub(crate) fn settings(&self) -> KernelSettings {
         KernelSettings::new(
             CubeDim::new_1d(self.cube_size).into(),
             ExecutionMode::Checked,
@@ -232,7 +232,7 @@ impl Executor {
         Ok(())
     }
 
-    fn require_output_type(
+    pub(crate) fn require_output_type(
         &self,
         program: &KernelProgram,
         expected: DataType,
@@ -250,15 +250,41 @@ impl Executor {
         batch: &Batch<'_>,
         parameters: &Parameters,
     ) -> Result<OutputBytes, ExecutionError> {
+        let output = self.submit_expression(program, batch, parameters)?;
+        let values = match &output.values {
+            Some(handle) => read_plane(&self.client, handle.clone(), output.rows as usize * 4)?,
+            None => Bytes::from_bytes_vec(Vec::new()),
+        };
+        let validity = if program.output_nullable() {
+            Some(match &output.validity {
+                Some(handle) => read_plane(&self.client, handle.clone(), output.rows as usize * 4)?,
+                None => Bytes::from_bytes_vec(Vec::new()),
+            })
+        } else {
+            None
+        };
+        output.check_errors(&self.client)?;
+        Ok(OutputBytes { values, validity })
+    }
+
+    // Submission owns all inputs/outputs until the caller observes completion.
+    // Selection consumes the predicate values without a host readback.
+    pub(crate) fn submit_expression(
+        &self,
+        program: &KernelProgram,
+        batch: &Batch<'_>,
+        parameters: &Parameters,
+    ) -> Result<SubmittedExpression, ExecutionError> {
         let layout = BindingLayout::new(program);
         let host = layout.bind_host(batch, parameters)?;
         let rows = host.extent().row_count();
         if rows == 0 {
-            return Ok(OutputBytes {
-                values: Bytes::from_bytes_vec(Vec::new()),
-                validity: program
-                    .output_nullable()
-                    .then(|| Bytes::from_bytes_vec(Vec::new())),
+            return Ok(SubmittedExpression {
+                rows,
+                values: None,
+                validity: None,
+                error: None,
+                retained: Vec::new(),
             });
         }
         let hw = &self.client.properties().hardware;
@@ -276,6 +302,7 @@ impl Executor {
             });
         }
         let mut buffers = Vec::with_capacity(layout.buffers().len());
+        let mut retained = Vec::with_capacity(layout.buffers().len());
         let mut output = None;
         let mut output_validity = None;
         let mut output_error = None;
@@ -309,6 +336,7 @@ impl Executor {
                     handle
                 }
             };
+            retained.push(handle.clone());
             // SAFETY: input bytes come from initialized typed slices and checked
             // validity. Outputs are distinct fresh write-only allocations. The
             // emitter initializes both output planes for every in-range row.
@@ -334,24 +362,28 @@ impl Executor {
                 CubeCount::Static(cubes, 1, 1),
             )?;
         }
-        let read = |handle| {
-            let bytes = self
-                .client
-                .read_one(handle)
-                .map_err(ExecutionError::Backend)?;
-            if bytes.len() != host.extent().byte_len() {
-                return Err(ExecutionError::OutputLength {
-                    expected: host.extent().byte_len(),
-                    actual: bytes.len(),
-                });
-            }
-            Ok(bytes)
-        };
-        // No result is exposed unless every declared output has completed.
-        let values = read(output.expect("layout output"))?;
-        let validity = output_validity.map(read).transpose()?;
-        if let Some(handle) = output_error {
-            let flags = read(handle)?;
+        Ok(SubmittedExpression {
+            rows,
+            values: output,
+            validity: output_validity,
+            error: output_error,
+            retained,
+        })
+    }
+}
+
+pub(crate) struct SubmittedExpression {
+    pub(crate) rows: u32,
+    pub(crate) values: Option<Handle>,
+    pub(crate) validity: Option<Handle>,
+    pub(crate) error: Option<Handle>,
+    pub(crate) retained: Vec<Handle>,
+}
+
+impl SubmittedExpression {
+    pub(crate) fn check_errors(&self, client: &Client) -> Result<(), ExecutionError> {
+        if let Some(handle) = &self.error {
+            let flags = read_plane(client, handle.clone(), self.rows as usize * 4)?;
             for (row, chunk) in flags.as_chunks::<4>().0.iter().enumerate() {
                 match u32::from_ne_bytes(*chunk) {
                     0 => {}
@@ -360,8 +392,23 @@ impl Executor {
                 }
             }
         }
-        Ok(OutputBytes { values, validity })
+        Ok(())
     }
+}
+
+pub(crate) fn read_plane(
+    client: &Client,
+    handle: Handle,
+    expected: usize,
+) -> Result<Bytes, ExecutionError> {
+    let bytes = client.read_one(handle).map_err(ExecutionError::Backend)?;
+    if bytes.len() != expected {
+        return Err(ExecutionError::OutputLength {
+            expected,
+            actual: bytes.len(),
+        });
+    }
+    Ok(bytes)
 }
 
 #[derive(Debug)]
@@ -385,6 +432,10 @@ pub enum ExecutionError {
     GridTooLarge {
         required: u32,
         max: u32,
+    },
+    InvalidSelectionCount {
+        count: u32,
+        capacity: u32,
     },
     Backend(ServerError),
     OutputLength {
@@ -422,6 +473,12 @@ impl fmt::Display for ExecutionError {
                 f,
                 "query needs {required} cubes on x; device limit is {max}"
             ),
+            Self::InvalidSelectionCount { count, capacity } => {
+                write!(
+                    f,
+                    "device selection count {count} exceeds capacity {capacity}"
+                )
+            }
             Self::Backend(error) => write!(f, "device execution failed: {error}"),
             Self::OutputLength { expected, actual } => {
                 write!(f, "device returned {actual} bytes; expected {expected}")

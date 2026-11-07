@@ -70,6 +70,24 @@ cargo run --locked --example checked_i32 -- cpu
 cargo run --locked --no-default-features --features metal --example checked_i32 -- metal
 ```
 
+## Stable device selection
+
+`executor.select(&predicate, &batch, &parameters)` submits a WHERE predicate and
+stable compaction without reading its mask or count to the host. The returned
+`DeviceSelection` owns pending device indices and count. Call `selected_count()`
+for an explicit blocking count boundary, or `materialize()` for completed indices.
+For `[10, NULL, 30, 40] WHERE x >= 30`, indices are `[2, 3]` in original row order.
+`executor.compact_mask(&[0, 1, 0, 1])` provides the same path from a checked mask.
+
+This returns row IDs, not compacted data columns. Cross-query DeviceBatch reuse
+and selected projection are subsequent features. See [selection semantics,
+algorithm and costs](docs/stable-selection.md).
+
+```sh
+cargo run --locked --example stable_selection -- cpu
+cargo run --locked --no-default-features --features metal --example stable_selection -- metal
+```
+
 ## Nullable F32 projection
 
 Declare nullable fields through `Schema::from_fields` and

@@ -6,7 +6,8 @@
 //! Supports nullable `f32` and checked `i32` arithmetic and nullable boolean predicates; use
 //! [`Executor::execute_nullable`] for value/validity projection output and
 //! [`Executor::execute_predicate`] for three-valued Bool projections, or
-//! [`Executor::execute_mask`] for dense WHERE flags.
+//! [`Executor::execute_mask`] for dense WHERE flags, or [`Executor::select`]
+//! for stable device selection indices and a device-side count.
 //!
 //! Backend features:
 //! - `cpu` (default): CubeCL's LLVM-based CPU runtime.
@@ -30,6 +31,8 @@ mod executor;
 mod expr;
 mod input;
 mod schema;
+mod selection;
+mod selection_kernel;
 
 pub use emitter::{CODEGEN_VERSION, ExpressionIdentity};
 pub use error::{Error, InputKind};
@@ -40,3 +43,4 @@ pub use expr::{
 };
 pub use input::{Batch, ColumnData, Parameters, ScalarValue};
 pub use schema::{ColumnId, DataType, Field, ParameterId, Schema};
+pub use selection::{DeviceSelection, SelectionStats};
