@@ -233,222 +233,10 @@ impl ExpressionKernel {
         index: Value,
         output_index: Value,
     ) {
-        let scope = body;
-        let f32_ty = ElemType::Float(FloatKind::F32).to_type(scope.ctx());
-        let one = FloatAttr::from_f64(scope.ctx(), f32_ty, 1.0);
-        let one = scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(one)));
-        let zero = FloatAttr::from_f64(scope.ctx(), f32_ty, 0.0);
-        let zero = scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(zero)));
-        let valid_true =
-            scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(BoolAttr(true))));
-        let int_zero = literal(scope, ConstantValue::Int(0), ElemType::Int(IntKind::I32));
-        let mut overflow_any = scope
-            .register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(BoolAttr(false))));
-        let bool_ty = ElemType::Bool.to_type(body.ctx());
-        let mut validities: Vec<Value> = Vec::with_capacity(self.program.nodes().len());
-        let mut values: Vec<Value> = Vec::with_capacity(self.program.nodes().len());
-        // This match runs once while constructing IR, not once per row on a device.
-        // Arena order preserves DAG sharing and the original arithmetic grouping.
-        for (node_index, node) in self.program.nodes().iter().enumerate() {
-            let mut overflow = None;
-            let value = match node.op() {
-                ScalarOp::Column(id) => {
-                    let buffer = declaration.column(id).expect("prepared column in layout");
-                    let ptr = body.register_with_result(&IndexOp::maybe_checked(
-                        body.ctx_mut(),
-                        buffer,
-                        index,
-                        true,
-                    ));
-                    body.register_with_result(&LoadOp::new(body.ctx_mut(), ptr))
-                }
-                ScalarOp::Parameter(id) => declaration
-                    .parameter(id)
-                    .expect("prepared parameter in layout"),
-                // Pinned CubeCL unconditionally fuses FMul -> FAdd despite
-                // fp_math_mode. fma(1,a,b) is exactly one rounded addition
-                // (1*a is exact), including signed zeros. It avoids that
-                // pattern and never fuses arithmetic across expression nodes.
-                ScalarOp::Add(a, b) | ScalarOp::Mul(a, b) if node.data_type() == DataType::I32 => {
-                    let (value, flag) = checked_i32(
-                        body,
-                        values[a.index()],
-                        values[b.index()],
-                        matches!(node.op(), ScalarOp::Mul(..)),
-                    );
-                    overflow = Some(flag);
-                    value
-                }
-                ScalarOp::Add(a, b) => body.register_with_result(&FmaOp::new(
-                    body.ctx_mut(),
-                    one,
-                    values[a.index()],
-                    values[b.index()],
-                )),
-                ScalarOp::Mul(a, b) => body.register_with_result(&FMulOp::new(
-                    body.ctx_mut(),
-                    values[a.index()],
-                    values[b.index()],
-                )),
-                ScalarOp::Compare(comparison, a, b) => {
-                    let integer = self.program.nodes()[a.index()].data_type() == DataType::I32;
-                    let (a, b) = (values[a.index()], values[b.index()]);
-                    if integer {
-                        match comparison {
-                            Comparison::Equal => {
-                                body.register_with_result(&IEqualOp::new(body.ctx_mut(), a, b))
-                            }
-                            Comparison::NotEqual => {
-                                body.register_with_result(&INotEqualOp::new(body.ctx_mut(), a, b))
-                            }
-                            Comparison::LessThan => {
-                                body.register_with_result(&SLessThanOp::new(body.ctx_mut(), a, b))
-                            }
-                            Comparison::LessThanOrEqual => body.register_with_result(
-                                &SLessThanOrEqualOp::new(body.ctx_mut(), a, b),
-                            ),
-                            Comparison::GreaterThan => body
-                                .register_with_result(&SGreaterThanOp::new(body.ctx_mut(), a, b)),
-                            Comparison::GreaterThanOrEqual => body.register_with_result(
-                                &SGreaterThanOrEqualOp::new(body.ctx_mut(), a, b),
-                            ),
-                        }
-                    } else {
-                        match comparison {
-                            Comparison::Equal => {
-                                body.register_with_result(&FEqualOp::new(body.ctx_mut(), a, b))
-                            }
-                            Comparison::NotEqual => {
-                                body.register_with_result(&FNotEqualOp::new(body.ctx_mut(), a, b))
-                            }
-                            Comparison::LessThan => {
-                                body.register_with_result(&FLessThanOp::new(body.ctx_mut(), a, b))
-                            }
-                            Comparison::LessThanOrEqual => body.register_with_result(
-                                &FLessThanOrEqualOp::new(body.ctx_mut(), a, b),
-                            ),
-                            Comparison::GreaterThan => body
-                                .register_with_result(&FGreaterThanOp::new(body.ctx_mut(), a, b)),
-                            Comparison::GreaterThanOrEqual => body.register_with_result(
-                                &FGreaterThanOrEqualOp::new(body.ctx_mut(), a, b),
-                            ),
-                        }
-                    }
-                }
-                ScalarOp::And(a, b) => body.register_with_result(&BoolAndOp::new(
-                    body.ctx_mut(),
-                    values[a.index()],
-                    values[b.index()],
-                )),
-                ScalarOp::Or(a, b) => body.register_with_result(&BoolOrOp::new(
-                    body.ctx_mut(),
-                    values[a.index()],
-                    values[b.index()],
-                )),
-                ScalarOp::Not(a) => {
-                    body.register_with_result(&BoolNotOp::new(body.ctx_mut(), values[a.index()]))
-                }
-                ScalarOp::IsNull(a) => body
-                    .register_with_result(&BoolNotOp::new(body.ctx_mut(), validities[a.index()])),
-            };
-            let valid = match node.op() {
-                ScalarOp::Column(id) if node.is_nullable() => {
-                    let buffer = declaration
-                        .column_validity(id)
-                        .expect("nullable column validity");
-                    let ptr = body.register_with_result(&IndexOp::maybe_checked(
-                        body.ctx_mut(),
-                        buffer,
-                        index,
-                        true,
-                    ));
-                    let raw = body.register_with_result(&LoadOp::new(body.ctx_mut(), ptr));
-                    body.register_with_result(&CastOp::new(body.ctx_mut(), bool_ty, raw))
-                }
-                ScalarOp::Parameter(id) if node.is_nullable() => {
-                    let raw = declaration
-                        .parameter_validity(id)
-                        .expect("nullable parameter validity");
-                    body.register_with_result(&CastOp::new(body.ctx_mut(), bool_ty, raw))
-                }
-                ScalarOp::Add(a, b) | ScalarOp::Mul(a, b) | ScalarOp::Compare(_, a, b)
-                    if node.is_nullable() =>
-                {
-                    body.register_with_result(&BoolAndOp::new(
-                        body.ctx_mut(),
-                        validities[a.index()],
-                        validities[b.index()],
-                    ))
-                }
-                ScalarOp::And(a, b) | ScalarOp::Or(a, b) if node.is_nullable() => {
-                    // Payloads of unknown Bool operands are canonical false.
-                    // AND is known when true or either operand is known false.
-                    // OR is known when true or both operands are known false.
-                    let not_a = body
-                        .register_with_result(&BoolNotOp::new(body.ctx_mut(), values[a.index()]));
-                    let not_b = body
-                        .register_with_result(&BoolNotOp::new(body.ctx_mut(), values[b.index()]));
-                    let a_false = body.register_with_result(&BoolAndOp::new(
-                        body.ctx_mut(),
-                        validities[a.index()],
-                        not_a,
-                    ));
-                    let b_false = body.register_with_result(&BoolAndOp::new(
-                        body.ctx_mut(),
-                        validities[b.index()],
-                        not_b,
-                    ));
-                    let known_false = match node.op() {
-                        ScalarOp::And(..) => body.register_with_result(&BoolOrOp::new(
-                            body.ctx_mut(),
-                            a_false,
-                            b_false,
-                        )),
-                        ScalarOp::Or(..) => body.register_with_result(&BoolAndOp::new(
-                            body.ctx_mut(),
-                            a_false,
-                            b_false,
-                        )),
-                        _ => unreachable!(),
-                    };
-                    body.register_with_result(&BoolOrOp::new(body.ctx_mut(), value, known_false))
-                }
-                ScalarOp::Not(a) if node.is_nullable() => validities[a.index()],
-                _ => valid_true,
-            };
-            // Every payload load is initialized. Canonicalize invalid F32 to +0
-            // and invalid Bool to false before consumers use them.
-            let value = if node.is_nullable() {
-                match node.data_type() {
-                    DataType::F32 => body.register_with_result(&SelectOp::new(
-                        body.ctx_mut(),
-                        valid,
-                        value,
-                        zero,
-                    )),
-                    DataType::Bool => {
-                        body.register_with_result(&BoolAndOp::new(body.ctx_mut(), valid, value))
-                    }
-                    DataType::I32 => body.register_with_result(&SelectOp::new(
-                        body.ctx_mut(),
-                        valid,
-                        value,
-                        int_zero,
-                    )),
-                }
-            } else {
-                value
-            };
-            if self.program.reachable()[node_index]
-                && let Some(flag) = overflow
-            {
-                let flag = body.register_with_result(&BoolAndOp::new(body.ctx_mut(), valid, flag));
-                overflow_any =
-                    body.register_with_result(&BoolOrOp::new(body.ctx_mut(), overflow_any, flag));
-            }
-            validities.push(valid);
-            values.push(value);
-        }
+        let emitted = emit_scalar(&self.program, declaration, body, index);
+        let values = emitted.values;
+        let validities = emitted.validities;
+        let overflow_any = emitted.overflow;
         let ptr = body.register_with_result(&IndexOp::maybe_checked(
             body.ctx_mut(),
             declaration.output(),
@@ -499,6 +287,234 @@ impl ExpressionKernel {
             };
             body.register(&StoreOp::new(body.ctx_mut(), ptr, flag));
         }
+    }
+}
+
+pub(crate) struct ScalarEmission {
+    pub(crate) values: Vec<Value>,
+    pub(crate) validities: Vec<Value>,
+    pub(crate) overflow: Value,
+}
+pub(crate) fn emit_scalar(
+    program: &KernelProgram,
+    declaration: &KernelDeclaration,
+    body: &Scope,
+    index: Value,
+) -> ScalarEmission {
+    let scope = body;
+    let f32_ty = ElemType::Float(FloatKind::F32).to_type(scope.ctx());
+    let one = FloatAttr::from_f64(scope.ctx(), f32_ty, 1.0);
+    let one = scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(one)));
+    let zero = FloatAttr::from_f64(scope.ctx(), f32_ty, 0.0);
+    let zero = scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(zero)));
+    let valid_true =
+        scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(BoolAttr(true))));
+    let int_zero = literal(scope, ConstantValue::Int(0), ElemType::Int(IntKind::I32));
+    let mut overflow_any =
+        scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(BoolAttr(false))));
+    let bool_ty = ElemType::Bool.to_type(body.ctx());
+    let mut validities: Vec<Value> = Vec::with_capacity(program.nodes().len());
+    let mut values: Vec<Value> = Vec::with_capacity(program.nodes().len());
+    // This match runs once while constructing IR, not once per row on a device.
+    // Arena order preserves DAG sharing and the original arithmetic grouping.
+    for (node_index, node) in program.nodes().iter().enumerate() {
+        let mut overflow = None;
+        let value = match node.op() {
+            ScalarOp::Column(id) => {
+                let buffer = declaration.column(id).expect("prepared column in layout");
+                let ptr = body.register_with_result(&IndexOp::maybe_checked(
+                    body.ctx_mut(),
+                    buffer,
+                    index,
+                    true,
+                ));
+                body.register_with_result(&LoadOp::new(body.ctx_mut(), ptr))
+            }
+            ScalarOp::Parameter(id) => declaration
+                .parameter(id)
+                .expect("prepared parameter in layout"),
+            // Pinned CubeCL unconditionally fuses FMul -> FAdd despite
+            // fp_math_mode. fma(1,a,b) is exactly one rounded addition
+            // (1*a is exact), including signed zeros. It avoids that
+            // pattern and never fuses arithmetic across expression nodes.
+            ScalarOp::Add(a, b) | ScalarOp::Mul(a, b) if node.data_type() == DataType::I32 => {
+                let (value, flag) = checked_i32(
+                    body,
+                    values[a.index()],
+                    values[b.index()],
+                    matches!(node.op(), ScalarOp::Mul(..)),
+                );
+                overflow = Some(flag);
+                value
+            }
+            ScalarOp::Add(a, b) => body.register_with_result(&FmaOp::new(
+                body.ctx_mut(),
+                one,
+                values[a.index()],
+                values[b.index()],
+            )),
+            ScalarOp::Mul(a, b) => body.register_with_result(&FMulOp::new(
+                body.ctx_mut(),
+                values[a.index()],
+                values[b.index()],
+            )),
+            ScalarOp::Compare(comparison, a, b) => {
+                let integer = program.nodes()[a.index()].data_type() == DataType::I32;
+                let (a, b) = (values[a.index()], values[b.index()]);
+                if integer {
+                    match comparison {
+                        Comparison::Equal => {
+                            body.register_with_result(&IEqualOp::new(body.ctx_mut(), a, b))
+                        }
+                        Comparison::NotEqual => {
+                            body.register_with_result(&INotEqualOp::new(body.ctx_mut(), a, b))
+                        }
+                        Comparison::LessThan => {
+                            body.register_with_result(&SLessThanOp::new(body.ctx_mut(), a, b))
+                        }
+                        Comparison::LessThanOrEqual => body
+                            .register_with_result(&SLessThanOrEqualOp::new(body.ctx_mut(), a, b)),
+                        Comparison::GreaterThan => {
+                            body.register_with_result(&SGreaterThanOp::new(body.ctx_mut(), a, b))
+                        }
+                        Comparison::GreaterThanOrEqual => body.register_with_result(
+                            &SGreaterThanOrEqualOp::new(body.ctx_mut(), a, b),
+                        ),
+                    }
+                } else {
+                    match comparison {
+                        Comparison::Equal => {
+                            body.register_with_result(&FEqualOp::new(body.ctx_mut(), a, b))
+                        }
+                        Comparison::NotEqual => {
+                            body.register_with_result(&FNotEqualOp::new(body.ctx_mut(), a, b))
+                        }
+                        Comparison::LessThan => {
+                            body.register_with_result(&FLessThanOp::new(body.ctx_mut(), a, b))
+                        }
+                        Comparison::LessThanOrEqual => body
+                            .register_with_result(&FLessThanOrEqualOp::new(body.ctx_mut(), a, b)),
+                        Comparison::GreaterThan => {
+                            body.register_with_result(&FGreaterThanOp::new(body.ctx_mut(), a, b))
+                        }
+                        Comparison::GreaterThanOrEqual => body.register_with_result(
+                            &FGreaterThanOrEqualOp::new(body.ctx_mut(), a, b),
+                        ),
+                    }
+                }
+            }
+            ScalarOp::And(a, b) => body.register_with_result(&BoolAndOp::new(
+                body.ctx_mut(),
+                values[a.index()],
+                values[b.index()],
+            )),
+            ScalarOp::Or(a, b) => body.register_with_result(&BoolOrOp::new(
+                body.ctx_mut(),
+                values[a.index()],
+                values[b.index()],
+            )),
+            ScalarOp::Not(a) => {
+                body.register_with_result(&BoolNotOp::new(body.ctx_mut(), values[a.index()]))
+            }
+            ScalarOp::IsNull(a) => {
+                body.register_with_result(&BoolNotOp::new(body.ctx_mut(), validities[a.index()]))
+            }
+        };
+        let valid = match node.op() {
+            ScalarOp::Column(id) if node.is_nullable() => {
+                let buffer = declaration
+                    .column_validity(id)
+                    .expect("nullable column validity");
+                let ptr = body.register_with_result(&IndexOp::maybe_checked(
+                    body.ctx_mut(),
+                    buffer,
+                    index,
+                    true,
+                ));
+                let raw = body.register_with_result(&LoadOp::new(body.ctx_mut(), ptr));
+                body.register_with_result(&CastOp::new(body.ctx_mut(), bool_ty, raw))
+            }
+            ScalarOp::Parameter(id) if node.is_nullable() => {
+                let raw = declaration
+                    .parameter_validity(id)
+                    .expect("nullable parameter validity");
+                body.register_with_result(&CastOp::new(body.ctx_mut(), bool_ty, raw))
+            }
+            ScalarOp::Add(a, b) | ScalarOp::Mul(a, b) | ScalarOp::Compare(_, a, b)
+                if node.is_nullable() =>
+            {
+                body.register_with_result(&BoolAndOp::new(
+                    body.ctx_mut(),
+                    validities[a.index()],
+                    validities[b.index()],
+                ))
+            }
+            ScalarOp::And(a, b) | ScalarOp::Or(a, b) if node.is_nullable() => {
+                // Payloads of unknown Bool operands are canonical false.
+                // AND is known when true or either operand is known false.
+                // OR is known when true or both operands are known false.
+                let not_a =
+                    body.register_with_result(&BoolNotOp::new(body.ctx_mut(), values[a.index()]));
+                let not_b =
+                    body.register_with_result(&BoolNotOp::new(body.ctx_mut(), values[b.index()]));
+                let a_false = body.register_with_result(&BoolAndOp::new(
+                    body.ctx_mut(),
+                    validities[a.index()],
+                    not_a,
+                ));
+                let b_false = body.register_with_result(&BoolAndOp::new(
+                    body.ctx_mut(),
+                    validities[b.index()],
+                    not_b,
+                ));
+                let known_false = match node.op() {
+                    ScalarOp::And(..) => {
+                        body.register_with_result(&BoolOrOp::new(body.ctx_mut(), a_false, b_false))
+                    }
+                    ScalarOp::Or(..) => {
+                        body.register_with_result(&BoolAndOp::new(body.ctx_mut(), a_false, b_false))
+                    }
+                    _ => unreachable!(),
+                };
+                body.register_with_result(&BoolOrOp::new(body.ctx_mut(), value, known_false))
+            }
+            ScalarOp::Not(a) if node.is_nullable() => validities[a.index()],
+            _ => valid_true,
+        };
+        // Every payload load is initialized. Canonicalize invalid F32 to +0
+        // and invalid Bool to false before consumers use them.
+        let value = if node.is_nullable() {
+            match node.data_type() {
+                DataType::F32 => {
+                    body.register_with_result(&SelectOp::new(body.ctx_mut(), valid, value, zero))
+                }
+                DataType::Bool => {
+                    body.register_with_result(&BoolAndOp::new(body.ctx_mut(), valid, value))
+                }
+                DataType::I32 => body.register_with_result(&SelectOp::new(
+                    body.ctx_mut(),
+                    valid,
+                    value,
+                    int_zero,
+                )),
+            }
+        } else {
+            value
+        };
+        if program.reachable()[node_index]
+            && let Some(flag) = overflow
+        {
+            let flag = body.register_with_result(&BoolAndOp::new(body.ctx_mut(), valid, flag));
+            overflow_any =
+                body.register_with_result(&BoolOrOp::new(body.ctx_mut(), overflow_any, flag));
+        }
+        validities.push(valid);
+        values.push(value);
+    }
+    ScalarEmission {
+        values,
+        validities,
+        overflow: overflow_any,
     }
 }
 

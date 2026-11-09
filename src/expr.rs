@@ -244,6 +244,33 @@ pub struct KernelProgram {
 }
 
 impl KernelProgram {
+    pub(crate) fn rebind_schema(&self, schema: &Schema) -> Self {
+        let nodes = self
+            .nodes()
+            .iter()
+            .map(|node| {
+                node.with_op(match node.op() {
+                    ScalarOp::Column(id) => ScalarOp::Column(
+                        schema
+                            .column_id(self.schema().columns()[id.index()].name())
+                            .expect("union column"),
+                    ),
+                    ScalarOp::Parameter(id) => ScalarOp::Parameter(
+                        schema
+                            .parameter_id(self.schema().parameters()[id.index()].name())
+                            .expect("union parameter"),
+                    ),
+                    other => other,
+                })
+            })
+            .collect::<Vec<_>>();
+        Self {
+            schema: Arc::new(schema.clone()),
+            nodes: nodes.into(),
+            root: self.root,
+            reachable: self.reachable.clone(),
+        }
+    }
     pub(crate) fn reachable(&self) -> &[bool] {
         &self.reachable
     }
@@ -465,4 +492,129 @@ fn validate_operand(
         });
     }
     Ok(())
+}
+
+/// Rebind programs to one schema and intern identical typed nodes. No algebraic
+/// reassociation. Conflicting declarations decline fusion rather than changing
+/// the independently prepared programs' input contracts.
+pub(crate) fn merge_programs(
+    programs: &[&KernelProgram],
+) -> Result<(KernelProgram, Vec<ExprId>), &'static str> {
+    use std::collections::{BTreeMap, HashMap};
+    let mut columns = BTreeMap::new();
+    let mut parameters = BTreeMap::new();
+    for program in programs {
+        for node in program.nodes() {
+            let (map, field) = match node.op() {
+                ScalarOp::Column(id) => (&mut columns, &program.schema().columns()[id.index()]),
+                ScalarOp::Parameter(id) => {
+                    (&mut parameters, &program.schema().parameters()[id.index()])
+                }
+                _ => continue,
+            };
+            if let Some(old) = map.insert(field.name().to_owned(), field.clone())
+                && old != *field
+            {
+                return Err("fusion requires consistent input declarations");
+            }
+        }
+    }
+    let schema = Schema::from_fields(
+        &columns.into_values().collect::<Vec<_>>(),
+        &parameters.into_values().collect::<Vec<_>>(),
+    )
+    .map_err(|_| "invalid fused schema")?;
+    let mut nodes = Vec::new();
+    let mut interned = HashMap::new();
+    let mut roots = Vec::new();
+    for program in programs {
+        let mut remap: Vec<ExprId> = Vec::new();
+        for node in program.nodes() {
+            let op = match node.op() {
+                ScalarOp::Column(id) => ScalarOp::Column(
+                    schema
+                        .column_id(program.schema().columns()[id.index()].name())
+                        .expect("merged column"),
+                ),
+                ScalarOp::Parameter(id) => ScalarOp::Parameter(
+                    schema
+                        .parameter_id(program.schema().parameters()[id.index()].name())
+                        .expect("merged parameter"),
+                ),
+                ScalarOp::Add(a, b) => ScalarOp::Add(remap[a.index()], remap[b.index()]),
+                ScalarOp::Mul(a, b) => ScalarOp::Mul(remap[a.index()], remap[b.index()]),
+                ScalarOp::Compare(op, a, b) => {
+                    ScalarOp::Compare(op, remap[a.index()], remap[b.index()])
+                }
+                ScalarOp::And(a, b) => ScalarOp::And(remap[a.index()], remap[b.index()]),
+                ScalarOp::Or(a, b) => ScalarOp::Or(remap[a.index()], remap[b.index()]),
+                ScalarOp::Not(a) => ScalarOp::Not(remap[a.index()]),
+                ScalarOp::IsNull(a) => ScalarOp::IsNull(remap[a.index()]),
+            };
+            let canonical = node.with_op(op);
+            let id = *interned.entry(canonical.clone()).or_insert_with(|| {
+                let id = ExprId::new(nodes.len());
+                nodes.push(canonical);
+                id
+            });
+            remap.push(id);
+        }
+        roots.push(remap[program.root().index()]);
+    }
+    if roots.is_empty() {
+        return Err("fusion needs a predicate or argument");
+    }
+    // An artificial Bool root marks all real roots reachable. It is not exported.
+    let mut root = None;
+    for &id in &roots {
+        let null = ExprId::new(nodes.len());
+        nodes.push(TypedExpr {
+            op: ScalarOp::IsNull(id),
+            data_type: DataType::Bool,
+            nullable: false,
+        });
+        if let Some(old) = root {
+            let id = ExprId::new(nodes.len());
+            nodes.push(TypedExpr {
+                op: ScalarOp::Or(old, null),
+                data_type: DataType::Bool,
+                nullable: false,
+            });
+            root = Some(id);
+        } else {
+            root = Some(null);
+        }
+    }
+    if nodes.len() > PrepareLimits::default().max_nodes {
+        return Err("fused arena exceeds node limit");
+    }
+    let root = root.expect("roots");
+    let mut reachable = vec![false; nodes.len()];
+    reachable[root.index()] = true;
+    for i in (0..nodes.len()).rev() {
+        if !reachable[i] {
+            continue;
+        }
+        match nodes[i].op() {
+            ScalarOp::Add(a, b)
+            | ScalarOp::Mul(a, b)
+            | ScalarOp::Compare(_, a, b)
+            | ScalarOp::And(a, b)
+            | ScalarOp::Or(a, b) => {
+                reachable[a.index()] = true;
+                reachable[b.index()] = true;
+            }
+            ScalarOp::Not(a) | ScalarOp::IsNull(a) => reachable[a.index()] = true,
+            _ => {}
+        }
+    }
+    Ok((
+        KernelProgram {
+            schema: Arc::new(schema),
+            nodes: nodes.into(),
+            root,
+            reachable: reachable.into(),
+        },
+        roots,
+    ))
 }

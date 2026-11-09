@@ -282,7 +282,7 @@ impl CubeKernel for ReductionKernel {
         builder.build()
     }
 }
-fn canonical_float(s: &Scope, bits: Value) -> Value {
+pub(crate) fn canonical_float(s: &Scope, bits: Value) -> Value {
     let abs = magnitude(s, bits);
     let inf = uint(s, 0x7f80_0000);
     let nan = s.register_with_result(&UGreaterThanOp::new(s.ctx_mut(), abs, inf));
@@ -293,7 +293,14 @@ fn magnitude(s: &Scope, bits: Value) -> Value {
     let mask = uint(s, 0x7fff_ffff);
     s.register_with_result(&BitwiseAndOp::new(s.ctx_mut(), bits, mask))
 }
-fn combine(s: &Scope, kind: ReductionKind, a: Value, b: Value, ca: Value, cb: Value) -> Value {
+pub(crate) fn combine(
+    s: &Scope,
+    kind: ReductionKind,
+    a: Value,
+    b: Value,
+    ca: Value,
+    cb: Value,
+) -> Value {
     let zero = uint(s, 0);
     if kind == ReductionKind::Count {
         return zero;
@@ -363,7 +370,11 @@ fn float_order_key(s: &Scope, bits: Value) -> Value {
 
 // All word arithmetic is U32 wrapping. Under the batch byte bound, every
 // mathematical partial sum fits i64; no native device I64 instructions needed.
-fn combine_i64(s: &Scope, a: (Value, Value, Value), b: (Value, Value, Value)) -> (Value, Value) {
+pub(crate) fn combine_i64(
+    s: &Scope,
+    a: (Value, Value, Value),
+    b: (Value, Value, Value),
+) -> (Value, Value) {
     let (al, ah, ca) = a;
     let (bl, bh, cb) = b;
     let low = s.register_with_result(&IAddOp::new(s.ctx_mut(), al, bl));

@@ -298,3 +298,11 @@ to both aggregate entry points. Wide accumulation uses two U32 words on device;
 Arrow export adds Int64 output without extending input types. See the
 [SUM tree, precision and error contract](docs/global-sum.md) and run
 `cargo run --all-features --example global_sum -- cpu` (or `metal`).
+
+## Resident pipelines
+
+`Pipeline` combines ordered filters, projections and global aggregates over one
+`DeviceBatch`, with an inspectable stage graph and unified completion. Eligible
+aggregate fragments fuse their first stage; `FusionMode::Unfused` keeps an
+executable reference path. See [stage graphs, fusion and completion](docs/device-pipeline.md)
+and run `cargo run --locked --example device_pipeline -- cpu` (or native `metal`).

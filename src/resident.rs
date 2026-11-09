@@ -1,12 +1,13 @@
 //! Immutable device snapshots and explicit blocking completion/materialization.
 
+use crate::completion::{ExitContext, check_all, synchronize};
 use crate::{
     Batch, DataType, Error, ExecutionError, Executor, Field, InputKind, KernelProgram,
     NullableBool, NullableF32, NullableI32, Parameters,
     abi::{BindingError, BindingLayout, BufferSource, PhysicalType},
     executor::{OutputBytes, SubmittedExpression, decode_validity, read_plane},
 };
-use cubecl::{bytes::Bytes, future::block_on, prelude::Client, server::Handle};
+use cubecl::{bytes::Bytes, prelude::Client, server::Handle};
 use std::{
     collections::BTreeMap,
     sync::{
@@ -25,6 +26,7 @@ pub struct ExecutionStats {
     pub readback_calls: u64,
     pub readback_bytes: u64,
     pub kernel_launches: u64,
+    /// Selection count reads; aggregate state count words are ordinary readbacks.
     pub count_readbacks: u64,
 }
 
@@ -180,19 +182,29 @@ impl DeviceResult {
     /// Explicit blocking completion. Checked I32 error planes require readback;
     /// value and validity planes remain on device. Repeated calls repeat checks.
     pub fn complete(&self) -> Result<(), ExecutionError> {
-        let handles = self.outputs.iter().flat_map(|(_, _, o)| o.retained.iter());
-        if self.outputs.iter().any(|(_, _, o)| o.rows != 0) {
-            block_on(self.client.sync_buffers(handles)).map_err(ExecutionError::Backend)?;
-        }
-        for (_, _, output) in self.outputs.iter() {
-            output.check_errors(&self.client, &self.counters)?;
-        }
-        Ok(())
+        synchronize(&self.client, &self.handles())?;
+        self.complete_in(&mut ExitContext::default())
+    }
+    pub(crate) fn handles(&self) -> Vec<Handle> {
+        self.outputs
+            .iter()
+            .flat_map(|(_, _, o)| o.retained.iter().cloned())
+            .collect()
+    }
+    pub(crate) fn complete_in(&self, _exit: &mut ExitContext) -> Result<(), ExecutionError> {
+        check_all(
+            self.outputs
+                .iter()
+                .map(|(_, _, o)| o.check_errors(&self.client, &self.counters)),
+        )
     }
     /// Blocking readback after completion; no partial vector is returned on error.
     /// Output order matches the program slice passed to execute_many_resident.
     pub fn materialize(&self) -> Result<Vec<HostColumn>, ExecutionError> {
         self.complete()?;
+        self.read_columns()
+    }
+    pub(crate) fn read_columns(&self) -> Result<Vec<HostColumn>, ExecutionError> {
         self.outputs
             .iter()
             .map(|(ty, _, output)| {

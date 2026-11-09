@@ -93,8 +93,8 @@ returns participating row count after synchronization and error checks.
 `materialize` reads final count/value words and returns named scalars in request
 order; empty/all-NULL MIN/MAX never require reading a value word. Zero source rows
 validate bindings but allocate, launch and read nothing. Repeated exports repeat
-checks/readback. Selected arguments currently repeat upstream count/error checks
-at export; no count is read during stage submission. CubeCL allocation/transport
+checks/readback. Selected arguments share an exit-local count/predicate check context at export;
+no count is read during stage submission. CubeCL allocation/transport
 APIs may still panic, as in existing execution APIs.
 
 With `arrow`, output always contains one row: COUNT columns are non-nullable

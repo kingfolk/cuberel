@@ -1,4 +1,5 @@
 //! Single-batch global COUNT/MIN/MAX/SUM with explicit device completion.
+use crate::completion::{ExitContext, synchronize};
 use crate::{
     DataType, DeviceBatch, DeviceProjection, DeviceSelection, ExecutionError, Executor,
     KernelProgram, Parameters,
@@ -7,7 +8,7 @@ use crate::{
     reduction_kernel::{ReductionKernel, ReductionKind},
     resident::ExecutionCounters,
 };
-use cubecl::{future::block_on, prelude::Client, server::Handle};
+use cubecl::{prelude::Client, server::Handle};
 use std::{
     collections::BTreeSet,
     sync::{Arc, atomic::Ordering},
@@ -24,13 +25,13 @@ pub enum Aggregate {
     Sum(KernelProgram),
 }
 impl Aggregate {
-    fn program(&self) -> Option<&KernelProgram> {
+    pub(crate) fn program(&self) -> Option<&KernelProgram> {
         match self {
             Self::CountStar => None,
             Self::Count(p) | Self::Min(p) | Self::Max(p) | Self::Sum(p) => Some(p),
         }
     }
-    fn kind(&self) -> Result<Option<ReductionKind>, ExecutionError> {
+    pub(crate) fn kind(&self) -> Result<Option<ReductionKind>, ExecutionError> {
         Ok(Some(match self {
             Self::CountStar => return Ok(None),
             Self::Count(_) => ReductionKind::Count,
@@ -99,6 +100,8 @@ pub struct DeviceAggregates {
     dependencies: Arc<Vec<Dependency>>,
     retained: Arc<Vec<Handle>>,
     stats: AggregateStats,
+    predicate_checks: Arc<Vec<SubmittedExpression>>,
+    row_count_state: Option<Handle>,
 }
 impl DeviceAggregates {
     pub fn stats(&self) -> AggregateStats {
@@ -108,19 +111,42 @@ impl DeviceAggregates {
     /// Returns participating row count; values remain on device. Checked I32
     /// arguments and selected dependencies may require error/count readback.
     pub fn complete(&self) -> Result<u32, ExecutionError> {
-        if !self.retained.is_empty() {
-            block_on(self.client.sync_buffers(self.retained.iter()))
-                .map_err(ExecutionError::Backend)?;
+        synchronize(&self.client, &self.handles())?;
+        self.complete_in(&mut ExitContext::default())
+    }
+    pub(crate) fn handles(&self) -> Vec<Handle> {
+        let mut handles = self.retained.as_ref().clone();
+        if let Some(selection) = &self.selection {
+            handles.extend(selection.handles());
+        }
+        handles
+    }
+    pub(crate) fn complete_in(&self, exit: &mut ExitContext) -> Result<u32, ExecutionError> {
+        for predicate in self.predicate_checks.iter() {
+            predicate.check_errors(&self.client, &self.counters)?;
         }
         let rows = match &self.selection {
-            Some(s) => s.selected_count()?,
-            None => self.rows,
+            Some(s) => exit.count(s)?,
+            None => {
+                if let Some(count) = &self.row_count_state {
+                    let count = self.read_word(count)?;
+                    if count > self.rows {
+                        return Err(ExecutionError::InvalidAggregateCount {
+                            count,
+                            rows: self.rows,
+                        });
+                    }
+                    count
+                } else {
+                    self.rows
+                }
+            }
         };
         let mut first_error = None;
         for dependency in self.dependencies.iter() {
             let checked = match dependency {
                 Dependency::Dense(input) => input.check_errors(&self.client, &self.counters),
-                Dependency::Selected(input) => input.complete().map(|_| ()),
+                Dependency::Selected(input) => input.complete_in(exit).map(|_| ()),
             };
             match checked {
                 Err(ExecutionError::IntegerOverflow { row }) => {
@@ -138,7 +164,9 @@ impl DeviceAggregates {
     /// Return one named scalar per aggregate, in request order, only after all
     /// completion/error checks succeed. Repeated calls repeat checks/readback.
     pub fn materialize(&self) -> Result<Vec<AggregateResult>, ExecutionError> {
-        let rows = self.complete()?;
+        self.read_results(self.complete()?)
+    }
+    pub(crate) fn read_results(&self, rows: u32) -> Result<Vec<AggregateResult>, ExecutionError> {
         self.entries
             .iter()
             .map(|entry| {
@@ -219,17 +247,14 @@ impl Executor {
     ) -> Result<DeviceAggregates, ExecutionError> {
         self.aggregate_impl(batch, Some(selection), aggregates, parameters)
     }
-    fn aggregate_impl(
+    pub(crate) fn preflight_aggregates(
         &self,
         batch: &DeviceBatch,
-        selection: Option<&DeviceSelection>,
+        selected: bool,
         aggregates: &[(&str, Aggregate)],
         parameters: &Parameters,
-    ) -> Result<DeviceAggregates, ExecutionError> {
+    ) -> Result<ReductionPlan, ExecutionError> {
         batch.validate_client(&self.client)?;
-        if selection.is_some_and(|s| !s.belongs_to(batch)) {
-            return Err(ExecutionError::SelectionSourceMismatch);
-        }
         if aggregates.is_empty() {
             return Err(ExecutionError::InvalidAggregation {
                 reason: "at least one named aggregate is required",
@@ -259,7 +284,7 @@ impl Executor {
                 let layout = BindingLayout::new(program);
                 batch.validate(&self.client, &layout, parameters)?;
                 self.preflight_expression(&layout, u64::from(batch.row_count()))?;
-                if selection.is_some()
+                if selected
                     && batch.row_count() != 0
                     && layout.buffers().len() as u64 + 3
                         > u64::from(self.client.properties().hardware.max_bindings)
@@ -270,14 +295,28 @@ impl Executor {
                 }
             }
         }
-        let plan = ReductionPlan::new(
+        ReductionPlan::new(
             &self.client,
             batch.row_count(),
             self.cube_size(),
             expressions,
             state_words,
             max_state_words,
-        )?;
+        )
+    }
+
+    fn aggregate_impl(
+        &self,
+        batch: &DeviceBatch,
+        selection: Option<&DeviceSelection>,
+        aggregates: &[(&str, Aggregate)],
+        parameters: &Parameters,
+    ) -> Result<DeviceAggregates, ExecutionError> {
+        batch.validate_client(&self.client)?;
+        if selection.is_some_and(|s| !s.belongs_to(batch)) {
+            return Err(ExecutionError::SelectionSourceMismatch);
+        }
+        let plan = self.preflight_aggregates(batch, selection.is_some(), aggregates, parameters)?;
         let mut entries = Vec::with_capacity(aggregates.len());
         let mut retained = Vec::new();
         let mut dependencies = Vec::new();
@@ -372,15 +411,17 @@ impl Executor {
             dependencies: Arc::new(dependencies),
             retained: Arc::new(retained),
             stats: plan.stats,
+            predicate_checks: Arc::new(Vec::new()),
+            row_count_state: None,
         })
     }
 }
-struct ReductionPlan {
-    levels: Vec<(u32, u32)>,
-    stats: AggregateStats,
+pub(crate) struct ReductionPlan {
+    pub(crate) levels: Vec<(u32, u32)>,
+    pub(crate) stats: AggregateStats,
 }
 impl ReductionPlan {
-    fn new(
+    pub(crate) fn new(
         client: &Client,
         rows: u32,
         tile: u32,
@@ -598,3 +639,6 @@ mod sum_completion_tests {
         exercise(Device::metal(Default::default()).expect("Metal required"));
     }
 }
+
+#[path = "aggregate/fused.rs"]
+pub(crate) mod fused;
