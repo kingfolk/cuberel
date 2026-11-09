@@ -1,0 +1,23 @@
+// Append only to the temporary reference checkout at 342b5f9.
+// Observation-only methods; no changes to launch/completion or timed kernels.
+impl DeviceSelection {
+    pub fn legacy_owned_bytes(&self) -> u64 {
+        let mut unique = std::collections::HashMap::new();
+        for handle in self.handles() {
+            unique.entry(handle.memory.clone().binding().id()).or_insert(handle.size_in_used());
+        }
+        unique.values().sum()
+    }
+    pub fn legacy_mask_count(&self) -> usize {
+        let mut current = self;
+        let mut count = 0;
+        loop {
+            if let Some(predicate) = &current.predicate {count += usize::from(predicate.values.is_some());}
+            if let Some(dependency) = &current.dependency {
+                count += usize::from(dependency.outputs[0].submitted.values.is_some());
+                current = &dependency.selection;
+            } else {break;}
+        }
+        count
+    }
+}

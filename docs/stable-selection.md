@@ -36,7 +36,7 @@ Ok(())
   readback. Submission latency is not kernel execution time and does not promise
   that backend enqueue/compilation is nonblocking.
 - `selected_count()` first checks completion of all retained buffers, including
-  predicate validity/error and every intermediate, then checks semantic errors
+  current outputs and completion/error witnesses, then checks semantic errors
   and reads the four-byte count. It does not read indices.
 - `materialize()` performs that same boundary, then reads exactly `4*count` bytes
   of indices. Empty selection returns an empty Vec without reading the unwritten
@@ -219,9 +219,10 @@ predicate input/output planes, runtime scalar/metadata buffers, workgroup shared
 memory and allocator caches. They are not a driver memory-peak report.
 
 Workspace is `4 * sum(level_len + ceil(level_len/T))`; indices reserve `4*N` bytes.
-All intermediates and the input remain owned for the selection's lifetime, so a
-second materialization is safe. Releasing scratch early or pooling it requires
-additional completion/lifetime design, deferred to device pipeline work.
+Private masks/validity/workspace retire from Cuberel ownership after their final
+consumers are enqueued; runtime bindings protect in-flight use. Counts and checked
+error dependencies remain available for repeated materialization. See
+[selection-only residency](selection-residency.md) for lifetime guarantees and metrics.
 
 For N=17003, T=64, L=3, workspace is 70184 bytes and indices capacity 68012 bytes.
 A host-mask call additionally uploads 68012 bytes, giving 206208 requested device

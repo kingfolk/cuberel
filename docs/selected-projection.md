@@ -86,14 +86,15 @@ these logical bytes are not a measurement of GPU bus traffic.
 
 Completion is explicitly blocking. It synchronizes output resources, checks the
 selection and its ancestors, reads counts and error prefixes, then exports value
-and validity prefixes. Nested filters currently repeat ancestor completion/count
-checks at the exit; repeated exports also repeat checks. Counters are charged to
-the executor owning each pending stage. This is a correctness-first F3 path, not
-a general stage scheduler or fused pipeline; F6/F7 address those costs.
+and validity prefixes. Shared ancestor counts/checks are memoized within each explicit exit; repeated
+exports repeat checks. Counters are charged to the executor owning each pending
+stage. F6 provides bounded pipelines; general request budgets remain F7.
 
 Each output allocates 4N value bytes, another 4N for nullable validity and another
-4N for checked error planes when required. Nested filters retain their parent
-resources and scan workspace. All sizes retain the checked U32-byte bounds.
+4N for checked error planes when required. Nested filters keep compact completion histories rather than ancestor masks,
+projections and scan workspace. External parent readers keep their own buffers
+valid; see [selection-only residency](selection-residency.md). All sizes retain
+the checked U32-byte bounds.
 Extra selected-expression bindings are preflighted; nested compaction needs six
 buffers plus runtime metadata (seven bindings). Unified request budgets remain F7.
 

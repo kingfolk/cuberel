@@ -1,5 +1,5 @@
 //! Count-guarded selected projection and compact, owned host columns.
-use crate::completion::{ExitContext, synchronize};
+use crate::completion::{ExitContext, check_all, synchronize};
 use crate::{
     DeviceBatch, DeviceSelection, ExecutionError, Executor, Field, HostColumn, KernelProgram,
     Parameters,
@@ -68,23 +68,11 @@ impl DeviceProjection {
     }
     pub(crate) fn complete_in(&self, exit: &mut ExitContext) -> Result<u32, ExecutionError> {
         let count = exit.count(&self.selection)?;
-        let mut first = None;
-        if count != 0 {
-            for output in self.outputs.iter() {
-                if let Some(error) = &output.submitted.error {
-                    let bytes = self.read_prefix(error, count)?;
-                    for bytes in bytes.as_chunks::<4>().0 {
-                        let row = u32::from_ne_bytes(*bytes);
-                        if row != 0 {
-                            first = Some(first.map_or(row - 1, |old: u32| old.min(row - 1)));
-                        }
-                    }
-                }
-            }
-        }
-        if let Some(row) = first {
-            return Err(ExecutionError::IntegerOverflow { row: row as usize });
-        }
+        check_all(self.outputs.iter().map(|output| {
+            output
+                .submitted
+                .check_selected_errors(&self.client, &self.counters, count)
+        }))?;
         Ok(count)
     }
     /// Export only initialized count prefixes. Values and validity are packed
