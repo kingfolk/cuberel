@@ -116,3 +116,6 @@ Validation on 2026-11-09 used the pinned CubeCL revision and Arrow 60:
 checks passed. The suite compares reference/fused values and errors, multi-level
 tails, nullable counts, wide carries, F32 trees, original-row errors, retained
 resource failures, and clone/drop/cross-thread ownership.
+
+A warmed release comparison with timings, raw samples and reproduction commands
+is available in the [Apple M1 fusion benchmark](benchmarks/fusion-m1-2026-11-09.md).
