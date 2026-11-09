@@ -1,0 +1,151 @@
+# Global SUM: F32 and widening I32 -> I64
+
+`Aggregate::Sum(program)` extends the [global aggregate API](global-aggregates.md).
+Both `aggregate_resident` and `aggregate_selected` accept it, alongside existing
+COUNT/MIN/MAX requests. The implementation reuses their checked argument kernels,
+source/service validation, device-count guards, partial tree and completion/error
+ownership. It adds no input types, source syntax, SQL planner or CPU evaluator.
+
+```rust
+let requests = [
+    ("integer_total", Aggregate::Sum(integer_program.clone())),
+    ("float_total", Aggregate::Sum(float_program.clone())),
+];
+let pending = executor.aggregate_selected(&batch, &selection, &requests, &params)?;
+let scalars = pending.materialize()?;
+// With feature arrow, pending.materialize_arrow()? exports one named row.
+```
+
+| Argument | Host scalar | Arrow output | Empty/all NULL |
+| --- | --- | --- | --- |
+| I32 | `AggregateValue::I64(Option<i64>)` | nullable Int64 | NULL |
+| F32 | `AggregateValue::F32(Option<f32>)` | nullable Float32 | NULL |
+
+SUM ignores NULL argument results. A true sum of zero remains `Some(0)` rather
+than NULL; every partial carries a valid count. Bool SUM is rejected before any
+submission. Int64 is an aggregate output type only: the existing Arrow/schema
+input allow-list still rejects it, and expressions do not gain general I64 math.
+
+## Exact I32 accumulation without native I64
+
+Each I32 input is sign-extended into two U32 words. Partial states have low word,
+high word and valid count. Combining nonempty states uses unsigned arithmetic:
+
+```text
+low   = a.low + b.low                 (modulo 2^32)
+carry = low < a.low
+high  = a.high + b.high + carry       (modulo 2^32)
+```
+
+Merge kernels consume the same state; host export reconstructs two's-complement
+I64 bits. No native device I64 instruction is assumed. With the inherited bound
+`N <= floor(U32_MAX/4) = 2^30-1`, every subset satisfies
+`abs(sum) <= N * 2^31 < 2^61`, safely inside I64. Thus legal inputs cannot overflow
+the accumulator, including intermediate partials. Low/high wrap is the intended
+word algorithm, not an I32 mathematical result.
+
+For example, `SUM([I32_MAX,I32_MAX])` is `4294967294_i64`. Conversely,
+`SUM(x+1)` still evaluates `x+1` with checked I32 semantics **before** accumulation;
+a participating MAX row raises the original-row overflow error. Selected rows
+excluded by a preceding WHERE do not evaluate that argument. Upstream predicate
+failures remain observable even when a later selection is empty.
+
+## F32 tree, rounding and exceptional values
+
+The algorithm configuration fixes the tree:
+
+1. Logical argument slots fill a tile in order; NULL/inactive/tail slots have
+   count zero and are empty states. Empty states are identities, not numeric +0.
+2. Pair adjacent states at distances 1, 2, 4, ... within a tile, checking the right
+   lane exists. Each round synchronizes every lane. Odd/non-power-of-two tiles
+   retain their unpaired state until a later round.
+3. Write one partial per block in block order; repeat the same tree on partials
+   until one state remains. Selected arguments use their stable compact order.
+
+Each nonempty pair performs a single-rounded F32 addition using `fma(1,a,b)`.
+As in the expression emitter, this avoids the pinned CubeCL's unconditional
+FMul->FAdd contraction pattern. No FAdd chain, reassociation flag or arithmetic
+across tree nodes is introduced; intermediate words are stored between rounds.
+NULL/empty states preserve the other state's bits, including a single -0.
+
+The tree can differ from a host left fold: with tile 4,
+`[1e20,1,-1e20,1]` reduces to `(1e20+1)+(-1e20+1) = 0` in F32; tile 3 produces 1.
+This distinction is intentional and covered by explicit expectations. Tree/tile,
+rounding/nonfinite profile, stages and target identity participate in cache keys.
+The same backend/configuration/input must reproduce the same bits; cross-device
+bitwise equality or equivalence to sequential accumulation is not promised.
+
+Valid NaNs propagate as canonical `0x7fc00000`, both at input and after each pair.
+IEEE infinity addition applies: +Inf plus -Inf produces canonical NaN, while
+same-sign infinity or infinity plus finite retains infinity. Zero signs follow
+the specified tree's IEEE addition, rather than an order-independent zero rule.
+Finite acceptance uses a stated `1e-3 + 1e-5*abs(reference)` tolerance for the
+1001-element cancellation-sensitive fixture, against f64 sums of actual f32
+input values. The four-element grouping fixture and exceptional values use exact
+bits. No F64 device accumulation or compensation algorithm is advertised.
+
+## Buffers, limits and completion
+
+The existing five-buffer reduction ABI remains for COUNT/MIN/MAX/F32 SUM. Wide
+SUM additionally binds input and output high-word planes, for seven buffers plus
+runtime metadata. First-stage input-high is an unread initialized dummy binding;
+real high words are generated by sign extension. Merge stages read high partials.
+Each F32 SUM partial has two words (8 bytes including count); wide SUM has three
+(12 bytes including count). Shared memory is tile*8 or tile*12 respectively.
+All per-plane sizes, combined partial bytes, padded grids and binding/shared
+limits are preflighted before argument submission. No host count read is added
+between levels. The U32 active-byte/index limits remain unchanged.
+
+The pending result retains every high/low/count intermediate and argument/error
+resource. Completion synchronizes all of them before returning success; export
+reads count and, for nonempty wide sums, both words. A verifier-rejected write
+that taints only the real high-word output must fail completion even when low and
+count outputs already succeeded. The negative fixture performs no malformed
+memory access. Clone/drop and failure recovery retain the existing guarantees.
+
+Reduction identity advances to v2 with the explicit SUM pair-tree/FMA/empty-state/
+NaN policy and kind/merge/nullable/selected modes. This invalidates incompatible
+old reducer artifacts; existing expression codegen v9 and selection primitive v2
+remain unchanged. Data, addresses, parameter values and counts stay outside keys.
+`AggregateStats` now sums each request's actual two/three-word state width; it
+still excludes argument/selection buffers, runtime staging and allocator caches.
+
+Completion remains blocking and repeats some upstream checks at export. Argument
+sharing, fusion, general scheduling, mask reclamation and unified budgets remain
+F6/F6a/F7. This is single-batch SUM; no cross-batch reduction or speedup is claimed.
+
+## Reproduction
+
+```sh
+cargo test --offline --locked --all-features
+cargo check --offline --locked --no-default-features --all-targets
+cargo test --offline --locked --no-default-features
+cargo test --offline --locked --no-default-features --features arrow
+cargo clippy --offline --locked --all-features --all-targets -- -D warnings
+RUSTDOCFLAGS='-D warnings' cargo doc --offline --locked --all-features --no-deps
+cargo run --offline --locked --all-features --example global_sum -- cpu
+cargo run --offline --locked --all-features --example global_sum -- metal
+cargo fmt --all -- --check
+```
+
+## Local acceptance (2026-11-08)
+
+On macOS 15.5 / Rust 1.99.0 with pinned CubeCL and Arrow 60, using separate target
+`/private/tmp/cuberel-build.hmThUI`:
+
+- CPU + real native Metal + Arrow: 111 tests passed (100 integration, 11 unit),
+  none failed or ignored. SUM adds 6 numerical/error tests, 2 Arrow tests and 2
+  actual-high-word verifier-safe failure tests; no generated cross-product.
+- No-runtime all-target check and 39 tests passed; Arrow-only 47 tests passed.
+- Strict Clippy all features/targets, rustdoc with warnings denied, fmt/diff passed.
+- Coverage includes carry/sign extension, large signed totals, NULL/empty/selected
+  paths, recursive/odd-width merge, exact exceptional F32 bits, explicit tree
+  grouping, finite tolerance, repeated actual submissions, checked argument errors,
+  upstream failures, clone/drop/cross-thread completion and recovery.
+
+Both explicit device examples return `wide_sum=4294967294_i64` and
+`float_sum=6.0_f32`. Each uploads 64 bytes once (four planes), submits 7 kernels,
+and performs zero count/payload reads before export. Export reports 8 reads /
+32 bytes, including 3 upstream count checks and 5 final state words. Reduction
+alone uses 2 launches / 20 partial-state bytes. These are logical counters, not
+physical peak-memory, bus-traffic or speedup measurements.

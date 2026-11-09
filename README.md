@@ -290,3 +290,11 @@ scalars using device partial states and recursive merges. COUNT returns host U64
 MIN/MAX ignore NULLs and return nullable I32/F32. With Arrow, export one row with
 UInt64 COUNT columns. See [aggregate semantics and limits](docs/global-aggregates.md)
 and `cargo run --all-features --example global_aggregates -- cpu` (or `metal`).
+
+## Global SUM
+
+`Aggregate::Sum(program)` adds nullable F32 SUM and exact widening I32→I64 SUM
+to both aggregate entry points. Wide accumulation uses two U32 words on device;
+Arrow export adds Int64 output without extending input types. See the
+[SUM tree, precision and error contract](docs/global-sum.md) and run
+`cargo run --all-features --example global_sum -- cpu` (or `metal`).

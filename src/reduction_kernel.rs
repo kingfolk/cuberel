@@ -5,16 +5,17 @@ use crate::{
 };
 use cubecl::{
     ir::{
-        Builtin, IntKind, UIntKind,
+        Builtin, FloatKind, IntKind, UIntKind,
+        attributes::FloatAttr,
         dialect::{
             bitwise::{BitwiseAndOp, BitwiseOrOp, BitwiseXorOp},
             branch::ReturnOp,
             cmp::{IEqualOp, SGreaterThanOp, SLessThanOp, UGreaterThanOp, ULessThanOp},
-            general::{BoolAndOp, BoolOrOp, ReadScalarOp, ReinterpretCastOp, SelectOp},
-            math::{IAddOp, URemOp},
+            general::{BoolAndOp, BoolOrOp, CastOp, ReadScalarOp, ReinterpretCastOp, SelectOp},
+            math::{FmaOp, IAddOp, URemOp},
             memory::{LoadOp, StoreOp},
         },
-        pliron::{op::Op, operation::verify_operation, value::Value},
+        pliron::{builtin::ops::ConstantOp, op::Op, operation::verify_operation, value::Value},
         types::ArrayType,
     },
     prelude::{
@@ -35,6 +36,17 @@ pub(crate) enum ReductionKind {
     MaxI32,
     MinF32,
     MaxF32,
+    SumF32,
+    SumI64,
+}
+
+impl ReductionKind {
+    pub(crate) fn needs_high(self) -> bool {
+        self == Self::SumI64
+    }
+    pub(crate) fn state_words(self) -> usize {
+        if self.needs_high() { 3 } else { 2 }
+    }
 }
 
 pub(crate) struct ReductionKernel {
@@ -67,13 +79,15 @@ impl ReductionKernel {
         }
     }
     // Private ABI: values, validity/partial counts, selected count/dummy input,
-    // output values, output counts; one U32 scalar logical input capacity.
-    pub(crate) fn launch(self, rows: u32, buffers: &[Handle; 5]) {
+    // output values, output counts; wide SUM additionally appends input/output
+    // high words. One U32 scalar carries logical input capacity.
+    pub(crate) fn launch(self, rows: u32, buffers: &[Handle]) {
+        assert_eq!(buffers.len(), if self.kind.needs_high() { 7 } else { 5 });
         let mut guard = LauncherGuard(Some(KernelLauncher::new(self.settings.clone())));
         let launcher = guard.0.as_mut().expect("fresh launcher");
         for (i, handle) in buffers.iter().enumerate() {
             assert_eq!(handle.service, self.client.service_id());
-            launcher.declare_io(if i < 3 {
+            launcher.declare_io(if i < 3 || i == 5 {
                 BufferIOAttr::ReadOnly
             } else {
                 BufferIOAttr::WriteOnly
@@ -102,8 +116,8 @@ impl KernelMetadata for ReductionKernel {
     fn id(&self) -> KernelId {
         KernelId::new::<Self>()
             .info((
-                1u32,
-                "ieee-bits-canonical-nan-signed-zero-v1",
+                2u32,
+                "ieee-bits-minmax;sum-pairwise-empty-identity-fma-one-canonical-nan-v1",
                 self.kind,
                 self.merge,
                 self.nullable,
@@ -131,7 +145,9 @@ impl CubeKernel for ReductionKernel {
         builder.runtime_properties(self.client.target_properties().clone());
         builder.device_properties(self.client.properties());
         let ty = ElemType::UInt(UIntKind::U32).to_type(builder.scope.ctx());
-        let buffers: Vec<_> = (0..5).map(|_| builder.buffer(ty)).collect();
+        let buffers: Vec<_> = (0..if self.kind.needs_high() { 7 } else { 5 })
+            .map(|_| builder.buffer(ty))
+            .collect();
         let ordinal = builder.scalar(UIntKind::U32.into());
         let s = &builder.scope;
         s.state_mut().modes.fp_math_mode = Default::default();
@@ -142,6 +158,10 @@ impl CubeKernel for ReductionKernel {
         let zero = uint(s, 0);
         let local_value = s.create_local_mut(ty, None);
         let local_count = s.create_local_mut(ty, None);
+        let local_high = self.kind.needs_high().then(|| s.create_local_mut(ty, None));
+        if let Some(high) = local_high {
+            s.register(&StoreOp::new(s.ctx_mut(), high, zero));
+        }
         s.register(&StoreOp::new(s.ctx_mut(), local_value, zero));
         s.register(&StoreOp::new(s.ctx_mut(), local_count, zero));
         let in_range = s.register_with_result(&ULessThanOp::new(s.ctx_mut(), gid, rows));
@@ -157,11 +177,34 @@ impl CubeKernel for ReductionKernel {
                 } else {
                     load(active, buffers[0], gid)
                 };
-                let value = if matches!(self.kind, ReductionKind::MinF32 | ReductionKind::MaxF32) {
+                let value = if matches!(
+                    self.kind,
+                    ReductionKind::MinF32 | ReductionKind::MaxF32 | ReductionKind::SumF32
+                ) {
                     canonical_float(active, value)
                 } else {
                     value
                 };
+                if let Some(high) = local_high {
+                    let bits = if self.merge {
+                        load(active, buffers[5], gid)
+                    } else {
+                        let sign = uint(active, 0x7fff_ffff);
+                        let negative = active.register_with_result(&UGreaterThanOp::new(
+                            active.ctx_mut(),
+                            value,
+                            sign,
+                        ));
+                        let ones = uint(active, u32::MAX);
+                        active.register_with_result(&SelectOp::new(
+                            active.ctx_mut(),
+                            negative,
+                            ones,
+                            zero,
+                        ))
+                    };
+                    active.register(&StoreOp::new(active.ctx_mut(), high, bits));
+                }
                 active.register(&StoreOp::new(active.ctx_mut(), local_count, count));
                 active.register(&StoreOp::new(active.ctx_mut(), local_value, value));
             };
@@ -180,6 +223,12 @@ impl CubeKernel for ReductionKernel {
         let array = ArrayType::get(s.ctx(), ty, self.settings.cube_dim.x as usize);
         let shared_values = s.create_shared(array, None);
         let shared_counts = s.create_shared(array, None);
+        let shared_high = self.kind.needs_high().then(|| s.create_shared(array, None));
+        if let Some(shared_high) = shared_high {
+            let high =
+                s.register_with_result(&LoadOp::new(s.ctx_mut(), local_high.expect("wide local")));
+            store(s, shared_high, lid, high);
+        }
         let value = s.register_with_result(&LoadOp::new(s.ctx_mut(), local_value));
         let count = s.register_with_result(&LoadOp::new(s.ctx_mut(), local_count));
         store(s, shared_values, lid, value);
@@ -200,7 +249,15 @@ impl CubeKernel for ReductionKernel {
                 let b = load(body, shared_values, right);
                 let ca = load(body, shared_counts, lid);
                 let cb = load(body, shared_counts, right);
-                let value = combine(body, self.kind, a, b, ca, cb);
+                let value = if let Some(shared_high) = shared_high {
+                    let ah = load(body, shared_high, lid);
+                    let bh = load(body, shared_high, right);
+                    let (value, high) = combine_i64(body, (a, ah, ca), (b, bh, cb));
+                    store(body, shared_high, lid, high);
+                    value
+                } else {
+                    combine(body, self.kind, a, b, ca, cb)
+                };
                 let count = body.register_with_result(&IAddOp::new(body.ctx_mut(), ca, cb));
                 // Pairs are disjoint within each round: right lanes never write.
                 store(body, shared_values, lid, value);
@@ -215,6 +272,10 @@ impl CubeKernel for ReductionKernel {
             let count = load(body, shared_counts, zero);
             store(body, buffers[3], block, value);
             store(body, buffers[4], block, count);
+            if let Some(shared_high) = shared_high {
+                let high = load(body, shared_high, zero);
+                store(body, buffers[6], block, high);
+            }
         });
         s.register(&ReturnOp::new(s.ctx_mut()));
         verify_operation(s.state().module.get_operation(), s.ctx()).expect("invalid reduction IR");
@@ -269,7 +330,20 @@ fn combine(s: &Scope, kind: ReductionKind, a: Value, b: Value, ca: Value, cb: Va
             let canonical = uint(s, 0x7fc0_0000);
             s.register_with_result(&SelectOp::new(s.ctx_mut(), any_nan, canonical, regular))
         }
-        ReductionKind::Count => unreachable!(),
+        ReductionKind::SumF32 => {
+            let ty = ElemType::Float(FloatKind::F32).to_type(s.ctx());
+            let av = s.register_with_result(&ReinterpretCastOp::new(s.ctx_mut(), ty, a));
+            let bv = s.register_with_result(&ReinterpretCastOp::new(s.ctx_mut(), ty, b));
+            // fma(1,a,b) is a single rounded add. Avoid CubeCL's unconditional
+            // FMul->FAdd contraction pattern, as in the expression emitter.
+            let one = FloatAttr::from_f64(s.ctx(), ty, 1.0);
+            let one = s.register_with_result(&ConstantOp::new(s.ctx_mut(), Box::new(one)));
+            let sum = s.register_with_result(&FmaOp::new(s.ctx_mut(), one, av, bv));
+            let bits_ty = ElemType::UInt(UIntKind::U32).to_type(s.ctx());
+            let bits = s.register_with_result(&ReinterpretCastOp::new(s.ctx_mut(), bits_ty, sum));
+            canonical_float(s, bits)
+        }
+        ReductionKind::Count | ReductionKind::SumI64 => unreachable!(),
     };
     let empty_a = s.register_with_result(&IEqualOp::new(s.ctx_mut(), ca, zero));
     let empty_b = s.register_with_result(&IEqualOp::new(s.ctx_mut(), cb, zero));
@@ -285,4 +359,25 @@ fn float_order_key(s: &Scope, bits: Value) -> Value {
     let reversed = s.register_with_result(&BitwiseXorOp::new(s.ctx_mut(), bits, all));
     let positive = s.register_with_result(&BitwiseOrOp::new(s.ctx_mut(), bits, sign));
     s.register_with_result(&SelectOp::new(s.ctx_mut(), negative, reversed, positive))
+}
+
+// All word arithmetic is U32 wrapping. Under the batch byte bound, every
+// mathematical partial sum fits i64; no native device I64 instructions needed.
+fn combine_i64(s: &Scope, a: (Value, Value, Value), b: (Value, Value, Value)) -> (Value, Value) {
+    let (al, ah, ca) = a;
+    let (bl, bh, cb) = b;
+    let low = s.register_with_result(&IAddOp::new(s.ctx_mut(), al, bl));
+    let carry = s.register_with_result(&ULessThanOp::new(s.ctx_mut(), low, al));
+    let ty = ElemType::UInt(UIntKind::U32).to_type(s.ctx());
+    let carry = s.register_with_result(&CastOp::new(s.ctx_mut(), ty, carry));
+    let high = s.register_with_result(&IAddOp::new(s.ctx_mut(), ah, bh));
+    let high = s.register_with_result(&IAddOp::new(s.ctx_mut(), high, carry));
+    let zero = uint(s, 0);
+    let empty_a = s.register_with_result(&IEqualOp::new(s.ctx_mut(), ca, zero));
+    let empty_b = s.register_with_result(&IEqualOp::new(s.ctx_mut(), cb, zero));
+    let low = s.register_with_result(&SelectOp::new(s.ctx_mut(), empty_b, al, low));
+    let low = s.register_with_result(&SelectOp::new(s.ctx_mut(), empty_a, bl, low));
+    let high = s.register_with_result(&SelectOp::new(s.ctx_mut(), empty_b, ah, high));
+    let high = s.register_with_result(&SelectOp::new(s.ctx_mut(), empty_a, bh, high));
+    (low, high)
 }
