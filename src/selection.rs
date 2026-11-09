@@ -465,6 +465,14 @@ pub(crate) mod completion_tests {
         settings: KernelSettings,
     ) -> cubecl::server::Handle {
         let marker = client.empty(4);
+        reject_output(client, settings, marker.clone());
+        marker
+    }
+    pub(crate) fn reject_output(
+        client: &Client,
+        settings: KernelSettings,
+        marker: cubecl::server::Handle,
+    ) {
         let kernel = RejectedOutput {
             client: client.clone(),
             settings: settings.clone(),
@@ -479,7 +487,6 @@ pub(crate) mod completion_tests {
             .take()
             .unwrap()
             .launch(CubeCount::Static(1, 1, 1), kernel, client);
-        marker
     }
     fn exercise(device: Device) {
         let client = device.client();

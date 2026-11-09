@@ -4,7 +4,7 @@
 use std::{collections::BTreeMap, error::Error as StdError, fmt, sync::Arc};
 
 use arrow_array::{
-    Array, ArrayRef, BooleanArray, Float32Array, Int32Array, RecordBatch, UInt64Array,
+    Array, ArrayRef, BooleanArray, Float32Array, Int32Array, Int64Array, RecordBatch, UInt64Array,
 };
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use arrow_schema::{DataType as ArrowDataType, Schema as ArrowSchema};
@@ -234,7 +234,8 @@ impl Executor {
 
 impl DeviceAggregates {
     /// Export one row of aggregate scalars. COUNT uses non-nullable UInt64;
-    /// MIN/MAX use nullable Int32/Float32, including NULL for empty input.
+    /// MIN/MAX use nullable Int32/Float32. SUM adds nullable Int64 for I32
+    /// arguments, or Float32 for F32. Empty/all-NULL MIN/MAX/SUM yield NULL.
     /// This extends only the output boundary, not the numeric input allow-list.
     pub fn materialize_arrow(&self) -> Result<RecordBatch, ArrowAdapterError> {
         let results = self.materialize()?;
@@ -251,6 +252,11 @@ impl DeviceAggregates {
                     ArrowDataType::Int32,
                     true,
                     Arc::new(Int32Array::from(vec![value])),
+                ),
+                AggregateValue::I64(value) => (
+                    ArrowDataType::Int64,
+                    true,
+                    Arc::new(Int64Array::from(vec![value])),
                 ),
                 AggregateValue::F32(value) => (
                     ArrowDataType::Float32,

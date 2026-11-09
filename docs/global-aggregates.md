@@ -3,7 +3,7 @@
 F4 builds on [resident batches](device-batch.md) and
 [selected execution](selected-projection.md). Global means all logical rows in
 one input batch or its stable selection; it does not mean distributed, streaming
-or cross-partition aggregation. SUM, GROUP BY and SQL integration are separate.
+or cross-partition aggregation. SUM is added by the [F5 extension](global-sum.md); GROUP BY and SQL integration remain separate.
 
 ```rust
 use cuberel::Aggregate;
@@ -153,3 +153,6 @@ no speedup is claimed.
 F4 was developed and accepted locally, then prepared for PR submission at the
 user's request. Its base includes merged F3 PR #13. Local milestone/roadmap
 planning files are excluded from the product change.
+
+[F5 SUM](global-sum.md) adds nullable F32 and widening I32→I64 totals, extends
+partial-state accounting by word width, and advances reducer identity to v2.

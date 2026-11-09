@@ -15,7 +15,7 @@
 //! [`Executor::project_selected`] computes only its active rows and returns a
 //! [`DeviceProjection`] for compact host or Arrow export.
 //! [`Executor::aggregate_resident`] and [`Executor::aggregate_selected`] return
-//! pending single-batch COUNT/MIN/MAX scalars through [`DeviceAggregates`].
+//! pending single-batch COUNT/MIN/MAX/SUM scalars through [`DeviceAggregates`].
 //!
 //! Backend features:
 //! - `cpu` (default): CubeCL's LLVM-based CPU runtime.
