@@ -3,14 +3,16 @@
 
 use std::{collections::BTreeMap, error::Error as StdError, fmt, sync::Arc};
 
-use arrow_array::{Array, ArrayRef, BooleanArray, Float32Array, Int32Array, RecordBatch};
+use arrow_array::{
+    Array, ArrayRef, BooleanArray, Float32Array, Int32Array, RecordBatch, UInt64Array,
+};
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use arrow_schema::{DataType as ArrowDataType, Schema as ArrowSchema};
 
 use crate::{
-    Batch, ColumnData, DataType, DeviceProjection, Error, ExecutionError, Executor, Field,
-    HostColumn, InputKind, KernelProgram, NullableBool, NullableF32, NullableI32, Parameters,
-    Schema,
+    AggregateValue, Batch, ColumnData, DataType, DeviceAggregates, DeviceProjection, Error,
+    ExecutionError, Executor, Field, HostColumn, InputKind, KernelProgram, NullableBool,
+    NullableF32, NullableI32, Parameters, Schema,
     abi::{BindingError, BindingLayout, BufferSource},
 };
 
@@ -227,6 +229,40 @@ impl Executor {
             BooleanBuffer::from_iter(values.into_iter().map(|v| v == 1)),
             None,
         ))
+    }
+}
+
+impl DeviceAggregates {
+    /// Export one row of aggregate scalars. COUNT uses non-nullable UInt64;
+    /// MIN/MAX use nullable Int32/Float32, including NULL for empty input.
+    /// This extends only the output boundary, not the numeric input allow-list.
+    pub fn materialize_arrow(&self) -> Result<RecordBatch, ArrowAdapterError> {
+        let results = self.materialize()?;
+        let mut fields = Vec::with_capacity(results.len());
+        let mut arrays: Vec<ArrayRef> = Vec::with_capacity(results.len());
+        for result in results {
+            let (ty, nullable, array): (ArrowDataType, bool, ArrayRef) = match result.value {
+                AggregateValue::Count(value) => (
+                    ArrowDataType::UInt64,
+                    false,
+                    Arc::new(UInt64Array::from(vec![value])),
+                ),
+                AggregateValue::I32(value) => (
+                    ArrowDataType::Int32,
+                    true,
+                    Arc::new(Int32Array::from(vec![value])),
+                ),
+                AggregateValue::F32(value) => (
+                    ArrowDataType::Float32,
+                    true,
+                    Arc::new(Float32Array::from(vec![value])),
+                ),
+            };
+            fields.push(arrow_schema::Field::new(result.name, ty, nullable));
+            arrays.push(array);
+        }
+        RecordBatch::try_new(Arc::new(ArrowSchema::new(fields)), arrays)
+            .map_err(ArrowAdapterError::Output)
     }
 }
 

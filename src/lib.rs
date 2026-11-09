@@ -14,6 +14,8 @@
 //! [`Executor::filter_selected`] refines a selection in original row coordinates;
 //! [`Executor::project_selected`] computes only its active rows and returns a
 //! [`DeviceProjection`] for compact host or Arrow export.
+//! [`Executor::aggregate_resident`] and [`Executor::aggregate_selected`] return
+//! pending single-batch COUNT/MIN/MAX scalars through [`DeviceAggregates`].
 //!
 //! Backend features:
 //! - `cpu` (default): CubeCL's LLVM-based CPU runtime.
@@ -31,17 +33,21 @@ pub mod abi;
 #[path = "device_abi.rs"]
 pub mod cubecl_abi;
 
+mod aggregate;
 mod emitter;
 mod error;
 mod executor;
 mod expr;
 mod input;
+mod ir_support;
+mod reduction_kernel;
 mod resident;
 mod schema;
 mod selected;
 mod selection;
 mod selection_kernel;
 
+pub use aggregate::{Aggregate, AggregateResult, AggregateStats, AggregateValue, DeviceAggregates};
 pub use emitter::{CODEGEN_VERSION, ExpressionIdentity};
 pub use error::{Error, InputKind};
 pub use executor::{ExecutionError, Executor, NullableBool, NullableF32, NullableI32};

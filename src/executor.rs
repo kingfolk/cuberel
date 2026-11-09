@@ -514,6 +514,9 @@ pub enum ExecutionError {
     SelectionSourceMismatch,
     InvalidProjectionName,
     EmptyProjection,
+    InvalidAggregation {
+        reason: &'static str,
+    },
     IntegerOverflow {
         row: usize,
     },
@@ -531,6 +534,10 @@ pub enum ExecutionError {
     GridTooLarge {
         required: u32,
         max: u32,
+    },
+    InvalidAggregateCount {
+        count: u32,
+        rows: u32,
     },
     InvalidSelectionCount {
         count: u32,
@@ -552,6 +559,7 @@ impl From<BindingError> for ExecutionError {
 impl fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidAggregation { reason } => write!(f, "invalid aggregation: {reason}"),
             Self::EmptyProjection => {
                 f.write_str("selected projection needs at least one named expression")
             }
@@ -584,6 +592,9 @@ impl fmt::Display for ExecutionError {
                 f,
                 "query needs {required} cubes on x; device limit is {max}"
             ),
+            Self::InvalidAggregateCount { count, rows } => {
+                write!(f, "aggregate valid count {count} exceeds input rows {rows}")
+            }
             Self::InvalidSelectionCount { count, capacity } => {
                 write!(
                     f,
