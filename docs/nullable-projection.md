@@ -93,10 +93,11 @@ initialized 0/1 values; descriptor checks cannot inspect opaque device contents.
 The executor reads value and validity outputs through checked CubeCL completion
 calls and checks each byte length. It validates returned validity before exposing
 any result; failure from either read returns an error. Readback is synchronous
-and currently uses two read calls for nullable outputs. There is no device-resident
-result or async interface, and this feature makes no performance improvement claim.
+and currently uses two read calls for nullable outputs. The synchronous APIs remain convenience interfaces; [device batches](device-batch.md)
+and [selected projection](selected-projection.md) provide resident results with explicit
+blocking completion. No general async interface or speedup is claimed.
 
-ABI version 4 describes value/validity planes; current codegen version 8 adds
+ABI version 4 describes value/validity planes; codegen v8 added
 nullable predicate semantics without changing their physical representation. Static
 nullability participates in typed nodes and binding identity; dynamic flags,
 NULL/Some scalar state, row counts and addresses do not. Duplicate pure nullable

@@ -4,7 +4,7 @@ Enable `arrow` to use Arrow input/output with the existing runtime expression
 compiler. `arrow-array`, `arrow-buffer` and `arrow-schema` are pinned to 60.0.0.
 This optional feature is independent of CPU/Metal runtime features and is off by
 default. The CubeCL revision remains unchanged. [Checked I32](checked-i32.md) extends
-this adapter under binding ABI v4 and codegen v8.
+this adapter under binding ABI v4 and codegen v9.
 
 ```toml
 cuberel = { path = "...", features = ["arrow"] }

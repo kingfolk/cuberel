@@ -72,7 +72,7 @@ wrong result types before allocation/launch; empty batches still validate all
 required inputs. Readback uses the same checked completion path, then validates
 mask values are 0/1. It does not reinterpret arbitrary bytes as Rust bools.
 
-Codegen version is now 8 after three-valued predicate support. Identity includes
+Codegen v8 introduced three-valued predicates; current codegen v9 also supports selected execution. Identity includes
 comparison kind, boolean operations,
 typed nodes, remapped operands/root and the updated physical layout. Duplicate
 pure predicate nodes normalize with the existing structural interning. Parameter

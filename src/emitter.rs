@@ -36,10 +36,13 @@ use cubecl::{
     },
 };
 
-use crate::{Comparison, DataType, ExprId, KernelProgram, ScalarOp, TypedExpr, abi::BindingLayout};
+use crate::{
+    Comparison, DataType, ExprId, KernelProgram, ScalarOp, TypedExpr, abi::BindingLayout,
+    cubecl_abi::KernelDeclaration,
+};
 
 // Change when emitted semantics or instruction policy changes.
-pub const CODEGEN_VERSION: u32 = 8;
+pub const CODEGEN_VERSION: u32 = 9;
 
 /// Structural identity for compilation and caching of an expression kernel.
 /// Dynamic values, handles, and row counts are absent.
@@ -57,6 +60,7 @@ pub struct ExpressionIdentity {
 
 pub(crate) struct ExpressionKernel {
     program: KernelProgram,
+    selected: bool,
     layout: BindingLayout,
     client: Client,
     settings: KernelSettings,
@@ -71,6 +75,7 @@ impl ExpressionKernel {
         define_count: Arc<AtomicUsize>,
     ) -> Self {
         Self {
+            selected: false,
             layout: BindingLayout::new(&program),
             program,
             client,
@@ -79,6 +84,16 @@ impl ExpressionKernel {
         }
     }
 
+    pub(crate) fn selected(
+        program: KernelProgram,
+        client: Client,
+        settings: KernelSettings,
+        define_count: Arc<AtomicUsize>,
+    ) -> Self {
+        let mut kernel = Self::new(program, client, settings, define_count);
+        kernel.selected = true;
+        kernel
+    }
     pub(crate) fn identity(&self) -> ExpressionIdentity {
         let mut nodes = Vec::new();
         let mut remapped: Vec<ExprId> = Vec::with_capacity(self.program.nodes().len());
@@ -121,9 +136,13 @@ impl ExpressionKernel {
 
 impl KernelMetadata for ExpressionKernel {
     fn id(&self) -> KernelId {
-        KernelId::new::<Self>()
-            .info(self.identity())
-            .cube_dim(self.settings.cube_dim)
+        let id = KernelId::new::<Self>();
+        let id = if self.selected {
+            id.info((self.identity(), "selected-prefix-v1"))
+        } else {
+            id.info(self.identity())
+        };
+        id.cube_dim(self.settings.cube_dim)
             .address_type(self.settings.address_type)
             .mode(self.settings.execution_mode)
     }
@@ -140,24 +159,15 @@ impl CubeKernel for ExpressionKernel {
             .settings
             .clone()
             .kernel_name(self.id().entrypoint_name("cuberel_expr"));
-        let declaration = self
-            .layout
-            .declare(&self.client, settings)
-            .expect("trusted emitter settings");
+        let declaration = if self.selected {
+            self.layout.declare_selected(&self.client, settings)
+        } else {
+            self.layout.declare(&self.client, settings)
+        }
+        .expect("trusted emitter settings");
         let scope = declaration.scope();
         // No contraction, reassociation, or assumptions about finite inputs.
         scope.state_mut().modes.fp_math_mode = Default::default();
-        let f32_ty = ElemType::Float(FloatKind::F32).to_type(scope.ctx());
-        let one = FloatAttr::from_f64(scope.ctx(), f32_ty, 1.0);
-        let one = scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(one)));
-        let zero = FloatAttr::from_f64(scope.ctx(), f32_ty, 0.0);
-        let zero = scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(zero)));
-        let valid_true =
-            scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(BoolAttr(true))));
-        let int_zero = literal(scope, ConstantValue::Int(0), ElemType::Int(IntKind::I32));
-        let mut overflow_any = scope
-            .register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(BoolAttr(false))));
-        let bool_ty = ElemType::Bool.to_type(scope.ctx());
         let index_ty = ElemType::Index.to_type(scope.ctx());
         let index = scope.register_with_result(&ReadBuiltinOp::new(
             scope.ctx_mut(),
@@ -169,8 +179,72 @@ impl CubeKernel for ExpressionKernel {
             index,
             declaration.row_count(),
         ));
-        let branch = IfOp::new(scope.ctx_mut(), in_range);
-        let body = scope.branch_child(OpInserter::new_at_block_end(branch.then_block(scope.ctx())));
+        branch(scope, in_range, |outer| {
+            if let Some((indices, count)) = declaration.selected() {
+                let zero = literal(outer, ConstantValue::UInt(0), UIntKind::U32.into());
+                let zero =
+                    outer.register_with_result(&CastOp::new(outer.ctx_mut(), index_ty, zero));
+                let ptr = outer.register_with_result(&IndexOp::maybe_checked(
+                    outer.ctx_mut(),
+                    count,
+                    zero,
+                    true,
+                ));
+                let count = outer.register_with_result(&LoadOp::new(outer.ctx_mut(), ptr));
+                let count =
+                    outer.register_with_result(&CastOp::new(outer.ctx_mut(), index_ty, count));
+                let active =
+                    outer.register_with_result(&ULessThanOp::new(outer.ctx_mut(), index, count));
+                branch(outer, active, |active| {
+                    let ptr = active.register_with_result(&IndexOp::maybe_checked(
+                        active.ctx_mut(),
+                        indices,
+                        index,
+                        true,
+                    ));
+                    let row = active.register_with_result(&LoadOp::new(active.ctx_mut(), ptr));
+                    let row =
+                        active.register_with_result(&CastOp::new(active.ctx_mut(), index_ty, row));
+                    let valid_row = active.register_with_result(&ULessThanOp::new(
+                        active.ctx_mut(),
+                        row,
+                        declaration.row_count(),
+                    ));
+                    branch(active, valid_row, |body| {
+                        self.emit_row(&declaration, body, row, index)
+                    });
+                });
+            } else {
+                self.emit_row(&declaration, outer, index, index);
+            }
+        });
+        scope.register(&ReturnOp::new(scope.ctx_mut()));
+        verify_operation(scope.state().module.get_operation(), scope.ctx())
+            .expect("Cuberel emitted invalid IR");
+        declaration.build()
+    }
+}
+
+impl ExpressionKernel {
+    fn emit_row(
+        &self,
+        declaration: &KernelDeclaration,
+        body: &Scope,
+        index: Value,
+        output_index: Value,
+    ) {
+        let scope = body;
+        let f32_ty = ElemType::Float(FloatKind::F32).to_type(scope.ctx());
+        let one = FloatAttr::from_f64(scope.ctx(), f32_ty, 1.0);
+        let one = scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(one)));
+        let zero = FloatAttr::from_f64(scope.ctx(), f32_ty, 0.0);
+        let zero = scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(zero)));
+        let valid_true =
+            scope.register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(BoolAttr(true))));
+        let int_zero = literal(scope, ConstantValue::Int(0), ElemType::Int(IntKind::I32));
+        let mut overflow_any = scope
+            .register_with_result(&ConstantOp::new(scope.ctx_mut(), Box::new(BoolAttr(false))));
+        let bool_ty = ElemType::Bool.to_type(body.ctx());
         let mut validities: Vec<Value> = Vec::with_capacity(self.program.nodes().len());
         let mut values: Vec<Value> = Vec::with_capacity(self.program.nodes().len());
         // This match runs once while constructing IR, not once per row on a device.
@@ -197,7 +271,7 @@ impl CubeKernel for ExpressionKernel {
                 // pattern and never fuses arithmetic across expression nodes.
                 ScalarOp::Add(a, b) | ScalarOp::Mul(a, b) if node.data_type() == DataType::I32 => {
                     let (value, flag) = checked_i32(
-                        &body,
+                        body,
                         values[a.index()],
                         values[b.index()],
                         matches!(node.op(), ScalarOp::Mul(..)),
@@ -378,7 +452,7 @@ impl CubeKernel for ExpressionKernel {
         let ptr = body.register_with_result(&IndexOp::maybe_checked(
             body.ctx_mut(),
             declaration.output(),
-            index,
+            output_index,
             true,
         ));
         let result = values[self.program.root().index()];
@@ -395,7 +469,7 @@ impl CubeKernel for ExpressionKernel {
             let ptr = body.register_with_result(&IndexOp::maybe_checked(
                 body.ctx_mut(),
                 buffer,
-                index,
+                output_index,
                 true,
             ));
             let ty = ElemType::UInt(UIntKind::U32).to_type(body.ctx());
@@ -410,28 +484,33 @@ impl CubeKernel for ExpressionKernel {
             let ptr = body.register_with_result(&IndexOp::maybe_checked(
                 body.ctx_mut(),
                 buffer,
-                index,
+                output_index,
                 true,
             ));
             let ty = ElemType::UInt(UIntKind::U32).to_type(body.ctx());
-            let flag = body.register_with_result(&CastOp::new(body.ctx_mut(), ty, overflow_any));
+            let flag = if self.selected {
+                let row = body.register_with_result(&CastOp::new(body.ctx_mut(), ty, index));
+                let one = literal(body, ConstantValue::UInt(1), UIntKind::U32.into());
+                let row = body.register_with_result(&IAddOp::new(body.ctx_mut(), row, one));
+                let zero = literal(body, ConstantValue::UInt(0), UIntKind::U32.into());
+                body.register_with_result(&SelectOp::new(body.ctx_mut(), overflow_any, row, zero))
+            } else {
+                body.register_with_result(&CastOp::new(body.ctx_mut(), ty, overflow_any))
+            };
             body.register(&StoreOp::new(body.ctx_mut(), ptr, flag));
         }
-        body.terminate_yield();
-        let other =
-            scope.branch_child(OpInserter::new_at_block_end(branch.else_block(scope.ctx())));
-        other.terminate_yield();
-        scope.register(&branch);
-        scope.update_flags_after_branch(&[body, other]);
-        // Verify a complete module: both regions yield and the entry function
-        // returns. KernelBuilder::build alone does not add this root terminator.
-        scope.register(&ReturnOp::new(scope.ctx_mut()));
-        verify_operation(scope.state().module.get_operation(), scope.ctx())
-            .expect("Cuberel emitted invalid IR");
-        // CubeCL catches define panics as CompilationError::ExpansionPanicked;
-        // the output read in Executor observes that failure instead of stale data.
-        declaration.build()
     }
+}
+
+fn branch(scope: &Scope, condition: Value, f: impl FnOnce(&Scope)) {
+    let op = IfOp::new(scope.ctx_mut(), condition);
+    let body = scope.branch_child(OpInserter::new_at_block_end(op.then_block(scope.ctx())));
+    f(&body);
+    body.terminate_yield();
+    let other = scope.branch_child(OpInserter::new_at_block_end(op.else_block(scope.ctx())));
+    other.terminate_yield();
+    scope.register(&op);
+    scope.update_flags_after_branch(&[body, other]);
 }
 
 fn literal(scope: &Scope, value: ConstantValue, ty: ElemType) -> Value {

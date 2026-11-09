@@ -79,8 +79,8 @@ for an explicit blocking count boundary, or `materialize()` for completed indice
 For `[10, NULL, 30, 40] WHERE x >= 30`, indices are `[2, 3]` in original row order.
 `executor.compact_mask(&[0, 1, 0, 1])` provides the same path from a checked mask.
 
-This returns row IDs, not compacted data columns. Cross-query DeviceBatch reuse
-and selected projection are subsequent features. See [selection semantics,
+This API returns row IDs. Use the resident DeviceBatch and selected projection
+APIs below to reuse uploads and export compacted data columns. See [selection semantics,
 algorithm and costs](docs/stable-selection.md).
 
 ```sh
@@ -274,3 +274,11 @@ Upload an immutable snapshot once with `Executor::upload`, reuse it through
 `execute_resident`, `execute_many_resident` and `select_resident`, then explicitly
 complete/materialize. See [device batch contracts and costs](docs/device-batch.md)
 and `cargo run --all-features --example resident_batch -- cpu` (or `metal`).
+
+## Selected projections and compact export
+
+Use `filter_selected` to refine a resident selection and `project_selected` to
+compute named expressions only for selected original rows. Export compact owned
+columns with `materialize`, or an Arrow RecordBatch with `materialize_arrow`.
+See [selected execution contracts](docs/selected-projection.md) and run
+`cargo run --all-features --example selected_projection -- cpu` (or `metal`).

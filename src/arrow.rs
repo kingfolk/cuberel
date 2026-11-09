@@ -8,8 +8,9 @@ use arrow_buffer::{BooleanBuffer, NullBuffer};
 use arrow_schema::{DataType as ArrowDataType, Schema as ArrowSchema};
 
 use crate::{
-    Batch, ColumnData, DataType, Error, ExecutionError, Executor, Field, InputKind, KernelProgram,
-    NullableBool, NullableF32, NullableI32, Parameters, Schema,
+    Batch, ColumnData, DataType, DeviceProjection, Error, ExecutionError, Executor, Field,
+    HostColumn, InputKind, KernelProgram, NullableBool, NullableF32, NullableI32, Parameters,
+    Schema,
     abi::{BindingError, BindingLayout, BufferSource},
 };
 
@@ -229,6 +230,36 @@ impl Executor {
     }
 }
 
+impl DeviceProjection {
+    /// Complete selected execution and export exactly count rows. Column order,
+    /// names, logical types and prepared nullability are preserved. Bool/validity
+    /// bitmaps are packed on host; this is not GPU zero-copy Arrow.
+    pub fn materialize_arrow(&self) -> Result<RecordBatch, ArrowAdapterError> {
+        let columns = self.materialize()?;
+        let mut fields = Vec::with_capacity(columns.len());
+        let mut arrays: Vec<ArrayRef> = Vec::with_capacity(columns.len());
+        for column in columns {
+            let ty = match column.field.data_type() {
+                DataType::F32 => ArrowDataType::Float32,
+                DataType::I32 => ArrowDataType::Int32,
+                DataType::Bool => ArrowDataType::Boolean,
+            };
+            fields.push(arrow_schema::Field::new(
+                column.field.name(),
+                ty,
+                column.field.is_nullable(),
+            ));
+            arrays.push(match column.data {
+                HostColumn::F32(data) => Arc::new(data.into_arrow()),
+                HostColumn::I32(data) => Arc::new(data.into_arrow()),
+                HostColumn::Bool(data) => Arc::new(data.into_arrow()),
+            });
+        }
+        RecordBatch::try_new(Arc::new(ArrowSchema::new(fields)), arrays)
+            .map_err(ArrowAdapterError::Output)
+    }
+}
+
 impl NullableF32 {
     /// Move the owned payload Vec into an Arrow ScalarBuffer and pack validity.
     pub fn into_arrow(self) -> Float32Array {
@@ -302,6 +333,7 @@ fn missing(name: &str) -> Error {
 
 #[derive(Debug)]
 pub enum ArrowAdapterError {
+    Output(arrow_schema::ArrowError),
     Input(Error),
     TypeMismatch {
         name: String,
@@ -334,6 +366,7 @@ impl From<ExecutionError> for ArrowAdapterError {
 impl fmt::Display for ArrowAdapterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Output(error) => write!(f, "invalid Arrow output: {error}"),
             Self::TypeMismatch {
                 name,
                 expected,
@@ -355,6 +388,7 @@ impl fmt::Display for ArrowAdapterError {
 impl StdError for ArrowAdapterError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
+            Self::Output(e) => Some(e),
             Self::Input(e) => Some(e),
             Self::Binding(e) => Some(e),
             Self::Execution(e) => Some(e),
