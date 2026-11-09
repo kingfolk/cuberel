@@ -90,15 +90,19 @@ impl DeviceBatch {
     pub fn same_source(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.source, &other.source)
     }
+    pub(crate) fn validate_client(&self, client: &Client) -> Result<(), ExecutionError> {
+        if self.client.service_id() != client.service_id() {
+            return Err(ExecutionError::ForeignDeviceBatch);
+        }
+        Ok(())
+    }
     pub(crate) fn validate(
         &self,
         client: &Client,
         layout: &BindingLayout,
         parameters: &Parameters,
     ) -> Result<(), ExecutionError> {
-        if self.client.service_id() != client.service_id() {
-            return Err(ExecutionError::ForeignDeviceBatch);
-        }
+        self.validate_client(client)?;
         let extent = layout.extent(u64::from(self.rows))?;
         layout.bind_scalars(extent, parameters)?;
         for slot in layout.buffers() {

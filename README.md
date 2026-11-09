@@ -282,3 +282,11 @@ compute named expressions only for selected original rows. Export compact owned
 columns with `materialize`, or an Arrow RecordBatch with `materialize_arrow`.
 See [selected execution contracts](docs/selected-projection.md) and run
 `cargo run --all-features --example selected_projection -- cpu` (or `metal`).
+
+## Global COUNT / MIN / MAX
+
+`aggregate_resident` and `aggregate_selected` compute named single-batch global
+scalars using device partial states and recursive merges. COUNT returns host U64;
+MIN/MAX ignore NULLs and return nullable I32/F32. With Arrow, export one row with
+UInt64 COUNT columns. See [aggregate semantics and limits](docs/global-aggregates.md)
+and `cargo run --all-features --example global_aggregates -- cpu` (or `metal`).
