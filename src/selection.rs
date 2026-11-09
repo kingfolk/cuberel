@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 
-use cubecl::{future::block_on, prelude::Client, server::Handle};
+use crate::completion::{ExitContext, synchronize};
+use cubecl::{prelude::Client, server::Handle};
 
 use crate::{
     Batch, DataType, DeviceBatch, ExecutionError, Executor, KernelProgram, Parameters,
@@ -33,6 +34,7 @@ pub struct DeviceSelection {
     counters: Arc<ExecutionCounters>,
     capacity: u32,
     source: Arc<()>,
+    completion_id: Arc<()>,
     indices: Option<Handle>,
     count: Option<Handle>,
     // Also retain every intermediate and input until completion or runtime-safe
@@ -73,13 +75,22 @@ impl DeviceSelection {
     /// count. This is an explicit blocking boundary, without reading indices.
     /// Each call repeats synchronization/count/error readback.
     pub fn selected_count(&self) -> Result<u32, ExecutionError> {
+        synchronize(&self.client, &self.handles())?;
+        ExitContext::default().count(self)
+    }
+    pub(crate) fn handles(&self) -> Vec<Handle> {
+        self.retained.clone()
+    }
+    pub(crate) fn count_in(&self, exit: &mut ExitContext) -> Result<u32, ExecutionError> {
+        let key = Arc::as_ptr(&self.completion_id) as usize;
+        if let Some((_, count)) = exit.counts.iter().find(|(id, _)| *id == key) {
+            return Ok(*count);
+        }
         if self.capacity == 0 {
             return Ok(0);
         }
-        block_on(self.client.sync_buffers(self.retained.iter()))
-            .map_err(ExecutionError::Backend)?;
         if let Some(dependency) = &self.dependency {
-            dependency.complete()?;
+            dependency.complete_in(exit)?;
         }
         if let Some(predicate) = &self.predicate {
             predicate.check_errors(&self.client, &self.counters)?;
@@ -97,6 +108,7 @@ impl DeviceSelection {
                 capacity: self.capacity,
             });
         }
+        exit.counts.push((key, count));
         Ok(count)
     }
 
@@ -245,6 +257,7 @@ impl Executor {
             counters: self.counters.clone(),
             capacity: plan.rows,
             source: Arc::new(()),
+            completion_id: Arc::new(()),
             indices: None,
             count: None,
             retained: Vec::new(),
@@ -322,6 +335,9 @@ impl Executor {
         Ok(selection)
     }
 
+    pub(crate) fn selection_plan(&self, rows: u32) -> Result<SelectionStats, ExecutionError> {
+        Ok(SelectionPlan::new(&self.client, rows, self.cube_size())?.stats)
+    }
     fn selection_launch(&self, stage: Stage, rows: u32, buffers: &[Handle]) {
         let kernel = SelectionKernel::new(
             stage,

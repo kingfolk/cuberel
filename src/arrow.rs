@@ -10,9 +10,9 @@ use arrow_buffer::{BooleanBuffer, NullBuffer};
 use arrow_schema::{DataType as ArrowDataType, Schema as ArrowSchema};
 
 use crate::{
-    AggregateValue, Batch, ColumnData, DataType, DeviceAggregates, DeviceProjection, Error,
-    ExecutionError, Executor, Field, HostColumn, InputKind, KernelProgram, NullableBool,
-    NullableF32, NullableI32, Parameters, Schema,
+    AggregateResult, AggregateValue, Batch, ColumnData, DataType, DeviceAggregates, DevicePipeline,
+    DeviceProjection, Error, ExecutionError, Executor, Field, HostColumn, InputKind, KernelProgram,
+    NullableBool, NullableF32, NullableI32, Parameters, PipelineResult, Schema, SelectedColumn,
     abi::{BindingError, BindingLayout, BufferSource},
 };
 
@@ -238,37 +238,7 @@ impl DeviceAggregates {
     /// arguments, or Float32 for F32. Empty/all-NULL MIN/MAX/SUM yield NULL.
     /// This extends only the output boundary, not the numeric input allow-list.
     pub fn materialize_arrow(&self) -> Result<RecordBatch, ArrowAdapterError> {
-        let results = self.materialize()?;
-        let mut fields = Vec::with_capacity(results.len());
-        let mut arrays: Vec<ArrayRef> = Vec::with_capacity(results.len());
-        for result in results {
-            let (ty, nullable, array): (ArrowDataType, bool, ArrayRef) = match result.value {
-                AggregateValue::Count(value) => (
-                    ArrowDataType::UInt64,
-                    false,
-                    Arc::new(UInt64Array::from(vec![value])),
-                ),
-                AggregateValue::I32(value) => (
-                    ArrowDataType::Int32,
-                    true,
-                    Arc::new(Int32Array::from(vec![value])),
-                ),
-                AggregateValue::I64(value) => (
-                    ArrowDataType::Int64,
-                    true,
-                    Arc::new(Int64Array::from(vec![value])),
-                ),
-                AggregateValue::F32(value) => (
-                    ArrowDataType::Float32,
-                    true,
-                    Arc::new(Float32Array::from(vec![value])),
-                ),
-            };
-            fields.push(arrow_schema::Field::new(result.name, ty, nullable));
-            arrays.push(array);
-        }
-        RecordBatch::try_new(Arc::new(ArrowSchema::new(fields)), arrays)
-            .map_err(ArrowAdapterError::Output)
+        aggregate_record_batch(self.materialize()?)
     }
 }
 
@@ -277,28 +247,94 @@ impl DeviceProjection {
     /// names, logical types and prepared nullability are preserved. Bool/validity
     /// bitmaps are packed on host; this is not GPU zero-copy Arrow.
     pub fn materialize_arrow(&self) -> Result<RecordBatch, ArrowAdapterError> {
-        let columns = self.materialize()?;
-        let mut fields = Vec::with_capacity(columns.len());
-        let mut arrays: Vec<ArrayRef> = Vec::with_capacity(columns.len());
-        for column in columns {
-            let ty = match column.field.data_type() {
-                DataType::F32 => ArrowDataType::Float32,
-                DataType::I32 => ArrowDataType::Int32,
-                DataType::Bool => ArrowDataType::Boolean,
-            };
-            fields.push(arrow_schema::Field::new(
-                column.field.name(),
-                ty,
-                column.field.is_nullable(),
-            ));
-            arrays.push(match column.data {
-                HostColumn::F32(data) => Arc::new(data.into_arrow()),
-                HostColumn::I32(data) => Arc::new(data.into_arrow()),
-                HostColumn::Bool(data) => Arc::new(data.into_arrow()),
-            });
-        }
-        RecordBatch::try_new(Arc::new(ArrowSchema::new(fields)), arrays)
-            .map_err(ArrowAdapterError::Output)
+        projection_record_batch(self.materialize()?)
+    }
+}
+
+fn aggregate_record_batch(results: Vec<AggregateResult>) -> Result<RecordBatch, ArrowAdapterError> {
+    let mut fields = Vec::with_capacity(results.len());
+    let mut arrays: Vec<ArrayRef> = Vec::with_capacity(results.len());
+    for result in results {
+        let (ty, nullable, array): (ArrowDataType, bool, ArrayRef) = match result.value {
+            AggregateValue::Count(value) => (
+                ArrowDataType::UInt64,
+                false,
+                Arc::new(UInt64Array::from(vec![value])),
+            ),
+            AggregateValue::I32(value) => (
+                ArrowDataType::Int32,
+                true,
+                Arc::new(Int32Array::from(vec![value])),
+            ),
+            AggregateValue::I64(value) => (
+                ArrowDataType::Int64,
+                true,
+                Arc::new(Int64Array::from(vec![value])),
+            ),
+            AggregateValue::F32(value) => (
+                ArrowDataType::Float32,
+                true,
+                Arc::new(Float32Array::from(vec![value])),
+            ),
+        };
+        fields.push(arrow_schema::Field::new(result.name, ty, nullable));
+        arrays.push(array);
+    }
+    RecordBatch::try_new(Arc::new(ArrowSchema::new(fields)), arrays)
+        .map_err(ArrowAdapterError::Output)
+}
+fn projection_record_batch(columns: Vec<SelectedColumn>) -> Result<RecordBatch, ArrowAdapterError> {
+    let mut fields = Vec::with_capacity(columns.len());
+    let mut arrays: Vec<ArrayRef> = Vec::with_capacity(columns.len());
+    for column in columns {
+        let ty = match column.field.data_type() {
+            DataType::F32 => ArrowDataType::Float32,
+            DataType::I32 => ArrowDataType::Int32,
+            DataType::Bool => ArrowDataType::Boolean,
+        };
+        fields.push(arrow_schema::Field::new(
+            column.field.name(),
+            ty,
+            column.field.is_nullable(),
+        ));
+        arrays.push(match column.data {
+            HostColumn::F32(data) => Arc::new(data.into_arrow()),
+            HostColumn::I32(data) => Arc::new(data.into_arrow()),
+            HostColumn::Bool(data) => Arc::new(data.into_arrow()),
+        });
+    }
+    RecordBatch::try_new(Arc::new(ArrowSchema::new(fields)), arrays)
+        .map_err(ArrowAdapterError::Output)
+}
+/// Projection rows and aggregate scalars have different shapes and are exported
+/// as separate optional batches. No zero-copy device Arrow is implied.
+#[derive(Debug)]
+pub struct PipelineArrowResult {
+    pub row_count: u32,
+    pub projections: Option<RecordBatch>,
+    pub aggregates: Option<RecordBatch>,
+}
+impl PipelineResult {
+    pub fn into_arrow(self) -> Result<PipelineArrowResult, ArrowAdapterError> {
+        Ok(PipelineArrowResult {
+            row_count: self.row_count,
+            projections: if self.projections.is_empty() {
+                None
+            } else {
+                Some(projection_record_batch(self.projections)?)
+            },
+            aggregates: if self.aggregates.is_empty() {
+                None
+            } else {
+                Some(aggregate_record_batch(self.aggregates)?)
+            },
+        })
+    }
+}
+impl DevicePipeline {
+    /// Complete and check all branches before exporting either Arrow batch.
+    pub fn materialize_arrow(&self) -> Result<PipelineArrowResult, ArrowAdapterError> {
+        self.materialize()?.into_arrow()
     }
 }
 

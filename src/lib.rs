@@ -17,6 +17,10 @@
 //! [`Executor::aggregate_resident`] and [`Executor::aggregate_selected`] return
 //! pending single-batch COUNT/MIN/MAX/SUM scalars through [`DeviceAggregates`].
 //!
+//! [`Executor::execute_pipeline`] combines resident filters, projections and
+//! aggregates with an inspectable [`StageGraph`], safe aggregate fusion and one
+//! explicit completion/export boundary through [`DevicePipeline`].
+//!
 //! Backend features:
 //! - `cpu` (default): CubeCL's LLVM-based CPU runtime.
 //! - `metal`: CubeCL's native Metal runtime on Apple platforms.
@@ -34,12 +38,14 @@ pub mod abi;
 pub mod cubecl_abi;
 
 mod aggregate;
+mod completion;
 mod emitter;
 mod error;
 mod executor;
 mod expr;
 mod input;
 mod ir_support;
+mod pipeline;
 mod reduction_kernel;
 mod resident;
 mod schema;
@@ -56,6 +62,9 @@ pub use expr::{
     param, prepare, prepare_with_limits,
 };
 pub use input::{Batch, ColumnData, Parameters, ScalarValue};
+pub use pipeline::{
+    DevicePipeline, FusionMode, Pipeline, PipelineResult, PipelineStage, StageGraph, StageKind,
+};
 pub use resident::{DeviceBatch, DeviceResult, ExecutionStats, HostColumn};
 pub use schema::{ColumnId, DataType, Field, ParameterId, Schema};
 pub use selected::{DeviceProjection, SelectedColumn};

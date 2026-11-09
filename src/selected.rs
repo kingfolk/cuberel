@@ -1,4 +1,5 @@
 //! Count-guarded selected projection and compact, owned host columns.
+use crate::completion::{ExitContext, synchronize};
 use crate::{
     DeviceBatch, DeviceSelection, ExecutionError, Executor, Field, HostColumn, KernelProgram,
     Parameters,
@@ -6,7 +7,7 @@ use crate::{
     executor::{OutputBytes, SubmittedExpression},
     resident::{ExecutionCounters, decode_host_column},
 };
-use cubecl::{bytes::Bytes, future::block_on, prelude::Client, server::Handle};
+use cubecl::{bytes::Bytes, prelude::Client, server::Handle};
 use std::{collections::BTreeSet, sync::Arc};
 
 /// A compact completed column with its output name, type and nullability.
@@ -53,17 +54,20 @@ impl DeviceProjection {
     /// prefixes. Returns the logical row count, never allocation capacity.
     /// Overflow diagnostics use the smallest original row across all outputs.
     pub fn complete(&self) -> Result<u32, ExecutionError> {
-        if self.capacity() != 0 {
-            block_on(
-                self.client.sync_buffers(
-                    self.outputs
-                        .iter()
-                        .flat_map(|o| o.submitted.retained.iter()),
-                ),
-            )
-            .map_err(ExecutionError::Backend)?;
-        }
-        let count = self.selection.selected_count()?;
+        synchronize(&self.client, &self.handles())?;
+        self.complete_in(&mut ExitContext::default())
+    }
+    pub(crate) fn handles(&self) -> Vec<Handle> {
+        let mut handles = self.selection.handles();
+        handles.extend(
+            self.outputs
+                .iter()
+                .flat_map(|o| o.submitted.retained.iter().cloned()),
+        );
+        handles
+    }
+    pub(crate) fn complete_in(&self, exit: &mut ExitContext) -> Result<u32, ExecutionError> {
+        let count = exit.count(&self.selection)?;
         let mut first = None;
         if count != 0 {
             for output in self.outputs.iter() {
@@ -86,7 +90,9 @@ impl DeviceProjection {
     /// Export only initialized count prefixes. Values and validity are packed
     /// into owned host columns only after every dependency/error check succeeds.
     pub fn materialize(&self) -> Result<Vec<SelectedColumn>, ExecutionError> {
-        let count = self.complete()?;
+        self.read_columns(self.complete()?)
+    }
+    pub(crate) fn read_columns(&self, count: u32) -> Result<Vec<SelectedColumn>, ExecutionError> {
         self.outputs
             .iter()
             .map(|output| {
@@ -123,6 +129,35 @@ impl DeviceProjection {
 }
 
 impl Executor {
+    pub(crate) fn preflight_projection(
+        &self,
+        batch: &DeviceBatch,
+        selected: bool,
+        programs: &[(&str, &KernelProgram)],
+        parameters: &Parameters,
+    ) -> Result<(), ExecutionError> {
+        if programs.is_empty() {
+            return Err(ExecutionError::EmptyProjection);
+        }
+        let mut names = BTreeSet::new();
+        for &(name, program) in programs {
+            if name.is_empty() || !names.insert(name) {
+                return Err(ExecutionError::InvalidProjectionName);
+            }
+            let layout = BindingLayout::new(program);
+            batch.validate(&self.client, &layout, parameters)?;
+            self.preflight_expression(&layout, u64::from(batch.row_count()))?;
+            if batch.row_count() != 0
+                && layout.buffers().len() as u64 + (if selected { 3 } else { 1 })
+                    > u64::from(self.client.properties().hardware.max_bindings)
+            {
+                return Err(ExecutionError::UnsupportedDevice {
+                    reason: "projection expression exceeds buffer binding limit",
+                });
+            }
+        }
+        Ok(())
+    }
     /// Compute named expressions only on selected original rows. All bindings,
     /// names, device/source identity and launch limits validate before submission.
     /// Each expression has an independent kernel, sharing the input selection.
@@ -136,26 +171,7 @@ impl Executor {
         if !selection.belongs_to(batch) {
             return Err(ExecutionError::SelectionSourceMismatch);
         }
-        if programs.is_empty() {
-            return Err(ExecutionError::EmptyProjection);
-        }
-        let mut names = BTreeSet::new();
-        for &(name, program) in programs {
-            if name.is_empty() || !names.insert(name) {
-                return Err(ExecutionError::InvalidProjectionName);
-            }
-            let layout = BindingLayout::new(program);
-            batch.validate(&self.client, &layout, parameters)?;
-            self.preflight_expression(&layout, u64::from(batch.row_count()))?;
-            if batch.row_count() != 0
-                && layout.buffers().len() as u64 + 3
-                    > u64::from(self.client.properties().hardware.max_bindings)
-            {
-                return Err(ExecutionError::UnsupportedDevice {
-                    reason: "selected expression exceeds buffer binding limit",
-                });
-            }
-        }
+        self.preflight_projection(batch, true, programs, parameters)?;
         let mut outputs = Vec::with_capacity(programs.len());
         for &(name, program) in programs {
             outputs.push(ProjectionOutput {

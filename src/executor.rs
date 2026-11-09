@@ -514,6 +514,9 @@ pub enum ExecutionError {
     SelectionSourceMismatch,
     InvalidProjectionName,
     EmptyProjection,
+    InvalidPipeline {
+        reason: &'static str,
+    },
     InvalidAggregation {
         reason: &'static str,
     },
@@ -559,6 +562,7 @@ impl From<BindingError> for ExecutionError {
 impl fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidPipeline { reason } => write!(f, "invalid pipeline: {reason}"),
             Self::InvalidAggregation { reason } => write!(f, "invalid aggregation: {reason}"),
             Self::EmptyProjection => {
                 f.write_str("selected projection needs at least one named expression")

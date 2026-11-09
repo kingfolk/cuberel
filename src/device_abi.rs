@@ -102,6 +102,10 @@ impl KernelDeclaration {
     pub fn row_count_raw(&self) -> Value {
         self.row_count_raw
     }
+    pub(crate) fn append_buffer(&mut self, ty: ElemType) -> Value {
+        let ty = ty.to_type(self.builder.scope.ctx());
+        self.builder.buffer(ty)
+    }
     pub fn build(self) -> KernelDefinition {
         self.builder.build()
     }
@@ -156,27 +160,39 @@ impl BindingLayout {
         client: &Client,
         settings: KernelSettings,
     ) -> Result<KernelDeclaration, BindingError> {
-        self.declare_impl(client, settings, false)
+        self.declare_impl(client, settings, false, false)
     }
     pub(crate) fn declare_selected(
         &self,
         client: &Client,
         settings: KernelSettings,
     ) -> Result<KernelDeclaration, BindingError> {
-        self.declare_impl(client, settings, true)
+        self.declare_impl(client, settings, true, false)
+    }
+    pub(crate) fn declare_inputs(
+        &self,
+        client: &Client,
+        settings: KernelSettings,
+    ) -> Result<KernelDeclaration, BindingError> {
+        self.declare_impl(client, settings, false, true)
     }
     fn declare_impl(
         &self,
         client: &Client,
         settings: KernelSettings,
         selected: bool,
+        inputs_only: bool,
     ) -> Result<KernelDeclaration, BindingError> {
         validate_settings(self, &settings)?;
         let mut builder = KernelBuilder::new(settings);
         builder.runtime_properties(client.target_properties().clone());
         builder.device_properties(client.properties());
         let mut buffers = Vec::new();
-        for slot in self.buffers() {
+        for slot in self
+            .buffers()
+            .iter()
+            .filter(|s| !inputs_only || s.access() == BufferAccess::ReadOnly)
+        {
             let ty = slot.element_type().elem_type().to_type(builder.scope.ctx());
             buffers.push(builder.buffer(ty));
         }
