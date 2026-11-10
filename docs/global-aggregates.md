@@ -62,8 +62,9 @@ All partial allocations, summed request bytes, padded grids and launch counts ar
 checked before submission. `AggregateStats` reports maximum reduction depth,
 reduction launch count and all logical partial-state bytes (including final
 states). It excludes argument/selection buffers, runtime metadata/staging,
-allocator caches and driver peak memory. Every argument currently has its own
-expression and reduction chain; shared scans/fusion are F6, budgets/performance F7.
+allocator caches and driver peak memory. The reference path gives each argument its own
+expression and reduction chain. See [F6 fusion](device-pipeline.md) and
+[F7 budgets and measurements](resource-budgets.md) for the composite path.
 
 ## Floating-point and error contract
 

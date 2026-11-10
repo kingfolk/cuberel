@@ -160,6 +160,11 @@ impl Executor {
             return Err(ExecutionError::SelectionSourceMismatch);
         }
         self.preflight_projection(batch, true, programs, parameters)?;
+        self.enforce(self.expression_estimate(
+            batch,
+            Some(selection),
+            &programs.iter().map(|(_, p)| *p).collect::<Vec<_>>(),
+        )?)?;
         let mut outputs = Vec::with_capacity(programs.len());
         for &(name, program) in programs {
             outputs.push(ProjectionOutput {

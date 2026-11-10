@@ -310,3 +310,10 @@ and run `cargo run --locked --example device_pipeline -- cpu` (or native `metal`
 Selections retire private masks and scan workspace after their final consumers
 are queued, while retaining count/error checks. See [selection-only residency](docs/selection-residency.md)
 for ownership guarantees, diagnostics and the before/after measurement.
+
+## Request budgets and M2 acceptance
+
+`ResourceBudget` bounds logical device bytes, output rows and stages before
+submission. `estimate_pipeline` reports the selected plan; `execute_pipeline_host`
+validates upload and execution atomically. See [resource accounting and limits](docs/resource-budgets.md)
+and [the reproducible M2 acceptance report](docs/benchmarks/milestone-03-acceptance.md).

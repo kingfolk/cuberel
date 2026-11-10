@@ -32,6 +32,7 @@ use crate::{
 pub struct Executor {
     pub(crate) client: Client,
     cube_size: u32,
+    pub(crate) budget: crate::ResourceBudget,
     pub(crate) counters: Arc<ExecutionCounters>,
     pub(crate) define_count: Arc<AtomicUsize>,
 }
@@ -58,6 +59,7 @@ impl Executor {
         Ok(Self {
             client,
             cube_size,
+            budget: crate::ResourceBudget::UNLIMITED,
             counters: Arc::new(ExecutionCounters::default()),
             define_count: Arc::new(AtomicUsize::new(0)),
         })
@@ -277,8 +279,15 @@ impl Executor {
                     .map_err(BindingError::from)?;
             }
         }
-        let device = self.upload(&active)?;
-        self.submit_resident_expression(program, &device, parameters)
+        let input =
+            crate::budget::upload_bytes(batch.row_count() as u64, active.columns().count())?;
+        let mut account =
+            crate::budget::Account::new(batch.row_count() as u64, input, batch.row_count() as u64);
+        account.expression(program, true)?;
+        self.enforce(account.finish()?)?;
+        let engine = self.without_budget();
+        let device = engine.upload(&active)?;
+        engine.submit_resident_expression(program, &device, parameters)
     }
 
     pub(crate) fn preflight_expression(
@@ -356,17 +365,17 @@ impl Executor {
                 BufferSource::Column(_) => batch.value_handle(slot.name()),
                 BufferSource::ColumnValidity(_) => batch.validity_handle(slot.name()),
                 BufferSource::Output => {
-                    let handle = self.client.empty(byte_len);
+                    let handle = self.allocate(byte_len);
                     output = Some(handle.clone());
                     handle
                 }
                 BufferSource::OutputError => {
-                    let handle = self.client.empty(byte_len);
+                    let handle = self.allocate(byte_len);
                     output_error = Some(handle.clone());
                     handle
                 }
                 BufferSource::OutputValidity => {
-                    let handle = self.client.empty(byte_len);
+                    let handle = self.allocate(byte_len);
                     output_validity = Some(handle.clone());
                     handle
                 }
@@ -542,6 +551,7 @@ pub(crate) fn read_plane(
 #[derive(Debug)]
 pub enum ExecutionError {
     Binding(BindingError),
+    Budget(crate::BudgetError),
     NullableOutput,
     ForeignDeviceBatch,
     SelectionSourceMismatch,
@@ -595,6 +605,7 @@ impl From<BindingError> for ExecutionError {
 impl fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Budget(error) => error.fmt(f),
             Self::InvalidPipeline { reason } => write!(f, "invalid pipeline: {reason}"),
             Self::InvalidAggregation { reason } => write!(f, "invalid aggregation: {reason}"),
             Self::EmptyProjection => {
@@ -778,6 +789,7 @@ impl StdError for ExecutionError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             Self::Binding(error) => Some(error),
+            Self::Budget(error) => Some(error),
             Self::Backend(error) => Some(error),
             _ => None,
         }

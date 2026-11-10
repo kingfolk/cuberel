@@ -111,8 +111,8 @@ remain unchanged. Data, addresses, parameter values and counts stay outside keys
 still excludes argument/selection buffers, runtime staging and allocator caches.
 
 Completion remains blocking and repeats some upstream checks at export. Argument
-sharing, fusion, general scheduling, mask reclamation and unified budgets remain
-F6/F6a/F7. This is single-batch SUM; no cross-batch reduction or speedup is claimed.
+sharing and general scheduling remain limited; see [F6 pipelines](device-pipeline.md),
+[F6a residency](selection-residency.md) and [F7 budgets](resource-budgets.md). This is single-batch SUM; no cross-batch reduction or speedup is claimed.
 
 ## Reproduction
 

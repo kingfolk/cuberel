@@ -317,6 +317,14 @@ impl Executor {
             return Err(ExecutionError::SelectionSourceMismatch);
         }
         let plan = self.preflight_aggregates(batch, selection.is_some(), aggregates, parameters)?;
+        let mut account = crate::budget::Account::new(
+            u64::from(batch.row_count()),
+            crate::budget::inputs(batch, selection)?,
+            1,
+        );
+        account.aggregates(aggregates, &plan)?;
+        self.enforce(account.finish()?)?;
+        let engine = self.without_budget();
         let mut entries = Vec::with_capacity(aggregates.len());
         let mut retained = Vec::new();
         let mut dependencies = Vec::new();
@@ -325,7 +333,7 @@ impl Executor {
             let mut state = None;
             if let Some(program) = aggregate.program() {
                 let (values, validity) = if let Some(selection) = selection {
-                    let input = Arc::new(self.project_selected(
+                    let input = Arc::new(engine.project_selected(
                         batch,
                         selection,
                         &[(name, program)],
@@ -338,7 +346,7 @@ impl Executor {
                     planes
                 } else {
                     let input =
-                        Arc::new(self.submit_resident_expression(program, batch, parameters)?);
+                        Arc::new(engine.submit_resident_expression(program, batch, parameters)?);
                     retained.extend(input.retained.iter().cloned());
                     let planes = (input.values.clone(), input.validity.clone());
                     dependencies.push(Dependency::Dense(input));
@@ -349,11 +357,11 @@ impl Executor {
                     let mut high = None;
                     let mut counts = validity.unwrap_or_else(|| values.clone());
                     for (level, &(rows, blocks)) in plan.levels.iter().enumerate() {
-                        let out_value = self.client.empty(blocks as usize * 4);
-                        let out_count = self.client.empty(blocks as usize * 4);
+                        let out_value = self.allocate(blocks as usize * 4);
+                        let out_count = self.allocate(blocks as usize * 4);
                         let out_high = kind
                             .needs_high()
-                            .then(|| self.client.empty(blocks as usize * 4));
+                            .then(|| self.allocate(blocks as usize * 4));
                         let selected_count = if level == 0 {
                             selection
                                 .map(|s| s.count_handle())

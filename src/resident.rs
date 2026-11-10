@@ -16,9 +16,10 @@ use std::{
     },
 };
 
-/// Cumulative explicit Cuberel transfers and submissions, shared by executor
+/// Cumulative explicit Cuberel transfers, allocation attempts and submissions, shared by executor
 /// clones. Excludes runtime metadata, implicit backend copies and allocator caches.
-/// Calls count attempts; bytes count successful readbacks or uploaded payloads.
+/// Transfer bytes count successful readbacks or uploaded payloads; allocation
+/// bytes count requested capacities, including unsuccessful allocation attempts.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ExecutionStats {
     pub upload_calls: u64,
@@ -28,6 +29,9 @@ pub struct ExecutionStats {
     pub kernel_launches: u64,
     /// Selection count reads; aggregate state count words are ordinary readbacks.
     pub count_readbacks: u64,
+    /// Explicit requested logical allocation attempts; excludes runtime metadata/cache.
+    pub allocation_calls: u64,
+    pub allocation_bytes: u64,
 }
 
 #[derive(Default)]
@@ -38,6 +42,8 @@ pub(crate) struct ExecutionCounters {
     read_bytes: AtomicU64,
     pub(crate) launches: AtomicU64,
     pub(crate) count_reads: AtomicU64,
+    allocations: AtomicU64,
+    allocation_bytes: AtomicU64,
 }
 impl ExecutionCounters {
     pub(crate) fn read(
@@ -60,6 +66,8 @@ impl ExecutionCounters {
             readback_bytes: self.read_bytes.load(Ordering::Relaxed),
             kernel_launches: self.launches.load(Ordering::Relaxed),
             count_readbacks: self.count_reads.load(Ordering::Relaxed),
+            allocation_calls: self.allocations.load(Ordering::Relaxed),
+            allocation_bytes: self.allocation_bytes.load(Ordering::Relaxed),
         }
     }
 }
@@ -91,6 +99,46 @@ impl DeviceBatch {
     }
     pub fn same_source(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.source, &other.source)
+    }
+    pub(crate) fn logical_bytes(&self) -> Result<u64, crate::BudgetError> {
+        crate::budget::upload_bytes(u64::from(self.rows), self.columns.len())
+    }
+    pub(crate) fn handles(&self) -> Vec<Handle> {
+        self.columns
+            .values()
+            .flat_map(|c| c.values.iter().chain(&c.validity).cloned())
+            .collect()
+    }
+    // Private allocation-free descriptor; never submitted or exposed as a batch.
+    pub(crate) fn describe(client: &Client, batch: &Batch<'_>) -> Result<Self, ExecutionError> {
+        let rows = batch.row_count() as u64;
+        if rows > u64::from(u32::MAX) / 4 {
+            return Err(BindingError::AddressOverflow {
+                field: "batch_byte_length",
+                value: rows.saturating_mul(4),
+            }
+            .into());
+        }
+        Ok(Self {
+            client: client.clone(),
+            rows: rows as u32,
+            source: Arc::new(()),
+            columns: batch
+                .columns()
+                .map(|(name, data)| {
+                    (
+                        name.into(),
+                        ResidentColumn {
+                            field: Field::new(name, data.data_type())
+                                .with_nullable(data.validity().is_some()),
+                            has_null: data.validity().is_some_and(|v| v.contains(&0)),
+                            values: None,
+                            validity: None,
+                        },
+                    )
+                })
+                .collect(),
+        })
     }
     pub(crate) fn validate_client(&self, client: &Client) -> Result<(), ExecutionError> {
         if self.client.service_id() != client.service_id() {
@@ -228,7 +276,18 @@ impl Executor {
     pub fn stats(&self) -> ExecutionStats {
         self.counters.snapshot()
     }
+    pub(crate) fn allocate(&self, bytes: usize) -> Handle {
+        self.counters.allocations.fetch_add(1, Ordering::Relaxed);
+        self.counters
+            .allocation_bytes
+            .fetch_add(bytes as u64, Ordering::Relaxed);
+        self.client.empty(bytes)
+    }
     pub(crate) fn upload_bytes(&self, bytes: &[u8]) -> Handle {
+        self.counters.allocations.fetch_add(1, Ordering::Relaxed);
+        self.counters
+            .allocation_bytes
+            .fetch_add(bytes.len() as u64, Ordering::Relaxed);
         let handle = self.client.create_from_slice(bytes);
         self.counters.uploads.fetch_add(1, Ordering::Relaxed);
         self.counters
@@ -251,6 +310,15 @@ impl Executor {
             }
             .into());
         }
+        let bytes = crate::budget::upload_bytes(rows, batch.columns().count())?;
+        self.enforce(crate::ResourceEstimate {
+            input_bytes: bytes,
+            device_bytes: bytes,
+            retained_bytes: bytes,
+            output_rows: rows,
+            stages: 1,
+            ..crate::ResourceEstimate::default()
+        })?;
         let mut columns = BTreeMap::new();
         for (name, data) in batch.columns() {
             let validity = data.validity();
@@ -307,6 +375,11 @@ impl Executor {
             batch.validate(&self.client, &layout, parameters)?;
             self.preflight_expression(&layout, u64::from(batch.rows))?;
         }
+        self.enforce(self.expression_estimate(
+            batch,
+            None,
+            &programs.iter().collect::<Vec<_>>(),
+        )?)?;
         let mut outputs = Vec::with_capacity(programs.len());
         for program in programs {
             outputs.push((

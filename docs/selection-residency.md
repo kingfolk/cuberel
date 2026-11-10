@@ -41,7 +41,8 @@ row 4 must be reported. Discarding masks must not turn that query into success.
 
 Counts and error planes are deliberately retained. With checked arithmetic,
 capacity-sized error planes can still grow with filter depth; this feature does
-not implement minimum-error-row reduction or a general memory budget. Source
+not implement minimum-error-row reduction. [F7 budgets](resource-budgets.md)
+account for those retained error planes. Source
 buffers retained as completion witnesses are reported separately from indices,
 counts and errors. External batches/outputs may also own the same allocations.
 
@@ -114,3 +115,7 @@ and native Metal with Arrow enabled; 39 tests passed without runtimes and 48 wit
 Arrow only. Strict all-target Clippy, rustdoc with warnings denied, formatting
 and diff checks passed. The release example and baseline adapter produced the
 recorded measurements without adding production-stage synchronization.
+
+F7 [resource budgets](resource-budgets.md) include these lifecycle differences:
+admission conservatively counts all requested buffers that may be in flight,
+while the retention bound credits retired private masks/workspace/ancestor indices.

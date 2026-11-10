@@ -88,7 +88,7 @@ Completion is explicitly blocking. It synchronizes output resources, checks the
 selection and its ancestors, reads counts and error prefixes, then exports value
 and validity prefixes. Shared ancestor counts/checks are memoized within each explicit exit; repeated
 exports repeat checks. Counters are charged to the executor owning each pending
-stage. F6 provides bounded pipelines; general request budgets remain F7.
+stage. F6 provides bounded pipelines; per-request limits are documented in [resource budgets](resource-budgets.md).
 
 Each output allocates 4N value bytes, another 4N for nullable validity and another
 4N for checked error planes when required. Nested filters keep compact completion histories rather than ancestor masks,
@@ -96,7 +96,7 @@ projections and scan workspace. External parent readers keep their own buffers
 valid; see [selection-only residency](selection-residency.md). All sizes retain
 the checked U32-byte bounds.
 Extra selected-expression bindings are preflighted; nested compaction needs six
-buffers plus runtime metadata (seven bindings). Unified request budgets remain F7.
+buffers plus runtime metadata (seven bindings). Unified [request budgets](resource-budgets.md) cover these allocations.
 
 The shared expression emitter now uses codegen **v9**, with a distinct
 `selected-prefix-v1` identity tag. Selection primitive identity is **v2** because

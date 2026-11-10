@@ -21,6 +21,10 @@
 //! aggregates with an inspectable [`StageGraph`], safe aggregate fusion and one
 //! explicit completion/export boundary through [`DevicePipeline`].
 //!
+//! [`ResourceBudget`] limits request bytes, output capacity and stages before
+//! allocation. [`Executor::estimate_pipeline`] exposes conservative plan costs;
+//! [`Executor::execute_pipeline_host`] budgets upload and execution atomically.
+//!
 //! Backend features:
 //! - `cpu` (default): CubeCL's LLVM-based CPU runtime.
 //! - `metal`: CubeCL's native Metal runtime on Apple platforms.
@@ -38,6 +42,7 @@ pub mod abi;
 pub mod cubecl_abi;
 
 mod aggregate;
+mod budget;
 mod completion;
 mod emitter;
 mod error;
@@ -54,6 +59,7 @@ mod selection;
 mod selection_kernel;
 
 pub use aggregate::{Aggregate, AggregateResult, AggregateStats, AggregateValue, DeviceAggregates};
+pub use budget::{BudgetError, BudgetResource, ResourceBudget, ResourceEstimate};
 pub use emitter::{CODEGEN_VERSION, ExpressionIdentity};
 pub use error::{Error, InputKind};
 pub use executor::{ExecutionError, Executor, NullableBool, NullableF32, NullableI32};
