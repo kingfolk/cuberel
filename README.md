@@ -10,17 +10,19 @@ The library builds and validates runtime expressions, lowers nullable `f32`
 arithmetic, checked I32 arithmetic and nullable boolean predicates to CubeCL IR, and executes on a selected CPU or native
 Metal client. No `#[cube]`, Rust source generation or runtime rustc invocation is
 used by this query path. Optional Arrow host adapters and opt-in DataFusion SQL
-registration are available; device SQL placement is a separate integration step.
+registration and explicitly selected filter/project device fragments are available.
 The backend smoke example separately initializes a real device and round-trips
 a buffer; it does **not** compile or launch a compute kernel.
 
 ## Optional SQL integration
 
 The `datafusion` feature pins DataFusion 55.2.0 and Arrow 59.2.0. Register the
-adapter on a default `SessionStateBuilder`; SQL currently keeps DataFusion's CPU
-plan. Registration preserves the standard optimizer rules and appends a final
-property check. It works without a CubeCL runtime. See the [dependency and
-registration contract](docs/datafusion-integration.md).
+adapter on a default `SessionStateBuilder`. `AdapterOptions::planning_only()`
+keeps DataFusion's CPU plan; `AdapterOptions::with_executor(executor)` opts into
+supported filter/project `CubeExec` fragments. Registration preserves the
+standard optimizer rules and appends a final property check. CPU planning works
+without a CubeCL runtime. See the [registration contract](docs/datafusion-integration.md),
+[semantic allow-list](docs/sql-semantics.md) and [execution limits](docs/sql-execution.md).
 
 ## Runtime expression execution
 

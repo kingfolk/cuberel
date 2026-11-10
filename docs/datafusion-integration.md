@@ -23,7 +23,7 @@ use datafusion::prelude::SessionContext;
 
 let state = register(
     SessionStateBuilder::new_with_default_features(),
-    AdapterOptions { enabled: true },
+    AdapterOptions::planning_only(),
 ).build();
 let context = SessionContext::new_with_state(state);
 ```
@@ -32,12 +32,11 @@ Disabled options leave the builder unchanged. Enabled registration appends a
 `cuberel` physical rule and a final `SanityCheckPlan` to the existing rules,
 preserving DataFusion's correctness-critical distribution/ordering enforcement.
 The final sanity check is deliberate: appended custom rules must also be checked.
-This first integration step preserves the original CPU plan; it does not yet
-claim device placement. SQL parsing, catalog, binding and optimization remain
+`planning_only()` preserves the original CPU plan. Use
+`AdapterOptions::with_executor(executor)` to explicitly enable the supported
+filter/project device path. SQL parsing, catalog, binding and optimization remain
 DataFusion responsibilities. Planner execution never uploads or launches work.
-
-The next stack layers add the typed capability mapping and an explicitly selected
-CubeCL executor. Unsupported SQL continues to execute on DataFusion CPU.
+See [SQL semantics](sql-semantics.md) and [execution/lifetime limits](sql-execution.md).
 
 ## Checks
 

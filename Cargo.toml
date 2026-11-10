@@ -26,9 +26,13 @@ arrow-array = { version = "=59.2.0", default-features = false, optional = true }
 arrow-buffer = { version = "=59.2.0", default-features = false, optional = true }
 arrow-schema = { version = "=59.2.0", default-features = false, optional = true }
 datafusion = { version = "=55.2.0", default-features = false, features = ["sql"], optional = true }
-tokio = { version = "1.52", features = ["rt-multi-thread", "sync", "macros"], optional = true }
+tokio = { version = "1.52", features = ["rt-multi-thread", "sync", "macros", "time"], optional = true }
 futures = { version = "0.3", optional = true }
 
 [[example]]
 name = "arrow_expr"
 required-features = ["arrow"]
+
+[[example]]
+name = "datafusion_sql"
+required-features = ["datafusion"]

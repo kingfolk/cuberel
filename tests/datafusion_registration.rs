@@ -12,7 +12,11 @@ async fn optional_registration_preserves_sql_and_default_rules() {
     for enabled in [false, true] {
         let state = register(
             SessionStateBuilder::new_with_default_features(),
-            AdapterOptions { enabled },
+            if enabled {
+                AdapterOptions::planning_only()
+            } else {
+                AdapterOptions::default()
+            },
         )
         .build();
         let names: Vec<_> = state
