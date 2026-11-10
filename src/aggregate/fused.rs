@@ -159,6 +159,17 @@ impl FusedPlan {
             levels.saturating_sub(1) * self.specs.len(),
         )
     }
+    pub(crate) fn account(
+        &self,
+        account: &mut crate::budget::Account,
+    ) -> Result<(), crate::BudgetError> {
+        let (first, merges) = self.launches();
+        account.errors(u64::from(self.predicate_error) + u64::from(self.argument_error))?;
+        account.partials(
+            self.reduction.stats.partial_state_bytes,
+            (first + merges) as u64,
+        )
+    }
     pub(crate) fn submit(
         self,
         executor: &Executor,
@@ -186,21 +197,21 @@ impl FusedPlan {
         let mut states = Vec::new();
         if let Some(&(_, blocks)) = self.reduction.levels.first() {
             for spec in &self.specs {
-                let low = executor.client.empty(blocks as usize * 4);
-                let count = executor.client.empty(blocks as usize * 4);
+                let low = executor.allocate(blocks as usize * 4);
+                let count = executor.allocate(blocks as usize * 4);
                 let high = spec
                     .kind
                     .needs_high()
-                    .then(|| executor.client.empty(blocks as usize * 4));
+                    .then(|| executor.allocate(blocks as usize * 4));
                 buffers.extend([low.clone(), count.clone()]);
                 buffers.extend(high.iter().cloned());
                 states.push(AggregateState { low, high, count });
             }
         }
         let pred_error = (self.predicate_error && batch.row_count() != 0)
-            .then(|| executor.client.empty(batch.row_count() as usize * 4));
+            .then(|| executor.allocate(batch.row_count() as usize * 4));
         let arg_error = (self.argument_error && batch.row_count() != 0)
-            .then(|| executor.client.empty(batch.row_count() as usize * 4));
+            .then(|| executor.allocate(batch.row_count() as usize * 4));
         buffers.extend(pred_error.iter().cloned());
         buffers.extend(arg_error.iter().cloned());
         retained.extend(buffers.iter().cloned());
@@ -245,12 +256,12 @@ impl FusedPlan {
             executor.counters.launches.fetch_add(1, Ordering::Relaxed);
             for &(rows, blocks) in self.reduction.levels.iter().skip(1) {
                 for (state, spec) in states.iter_mut().zip(&self.specs) {
-                    let low = executor.client.empty(blocks as usize * 4);
-                    let count = executor.client.empty(blocks as usize * 4);
+                    let low = executor.allocate(blocks as usize * 4);
+                    let count = executor.allocate(blocks as usize * 4);
                     let high = spec
                         .kind
                         .needs_high()
-                        .then(|| executor.client.empty(blocks as usize * 4));
+                        .then(|| executor.allocate(blocks as usize * 4));
                     let mut buffers = vec![
                         state.low.clone(),
                         state.count.clone(),

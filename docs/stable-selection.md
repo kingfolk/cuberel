@@ -203,7 +203,7 @@ The existing conservative U32 active-byte bound remains: capacity*4 must fit U32
 so the current maximum is floor(u32::MAX/4). All recursion sizes and grids are
 planned before upload. This is not a claim that CubeCL intrinsically requires a
 4 GiB byte limit. A smaller actual allocation/grid/shared-memory capability can
-still limit the operation. Unified request memory budgets are a later feature.
+still limit the operation. Unified [request budgets](resource-budgets.md) can reject smaller configured limits.
 
 Selection primitives have their own versioned identity (currently version 2, extended by F3), stage, full
 settings/tile, target name and device checksum. Counts, row lengths, number of

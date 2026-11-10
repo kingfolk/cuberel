@@ -1,0 +1,1979 @@
+CASE cpu-0-50-10
+runtime_in_use=0,runtime_reserved=0,sum_pool_page_peaks=0
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE cpu-1-100-0
+runtime_in_use=128,runtime_reserved=8388608,sum_pool_page_peaks=1
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 128,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 64,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE cpu-1024-50-10
+runtime_in_use=8192,runtime_reserved=8388608,sum_pool_page_peaks=1
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 8192,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 4096,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE cpu-1048576-50-10
+runtime_in_use=8388608,runtime_reserved=60817408,sum_pool_page_peaks=11
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 65536,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 5242880,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 8388608,
+                            bytes_padding: 0,
+                            bytes_reserved: 52428800,
+                        },
+                        pages: 10,
+                        pages_peak: 10,
+                        pages_unmapped: 0,
+                        largest_alloc: 4194304,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE cpu-2097152-50-10
+runtime_in_use=16777216,runtime_reserved=102760448,sum_pool_page_peaks=11
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 59008,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 9437184,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 16777216,
+                            bytes_padding: 0,
+                            bytes_reserved: 94371840,
+                        },
+                        pages: 10,
+                        pages_peak: 10,
+                        pages_unmapped: 0,
+                        largest_alloc: 8388608,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE cpu-65536-0-10
+runtime_in_use=524288,runtime_reserved=12582912,sum_pool_page_peaks=3
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 32768,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 524288,
+                            bytes_padding: 0,
+                            bytes_reserved: 4194304,
+                        },
+                        pages: 2,
+                        pages_peak: 2,
+                        pages_unmapped: 0,
+                        largest_alloc: 262144,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE cpu-65536-1-10
+runtime_in_use=524288,runtime_reserved=12582912,sum_pool_page_peaks=3
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 32768,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 524288,
+                            bytes_padding: 0,
+                            bytes_reserved: 4194304,
+                        },
+                        pages: 2,
+                        pages_peak: 2,
+                        pages_unmapped: 0,
+                        largest_alloc: 262144,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE cpu-65536-100-10
+runtime_in_use=524288,runtime_reserved=12582912,sum_pool_page_peaks=3
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 32768,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 524288,
+                            bytes_padding: 0,
+                            bytes_reserved: 4194304,
+                        },
+                        pages: 2,
+                        pages_peak: 2,
+                        pages_unmapped: 0,
+                        largest_alloc: 262144,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE cpu-65536-50-0
+runtime_in_use=524288,runtime_reserved=12582912,sum_pool_page_peaks=3
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 32768,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 524288,
+                            bytes_padding: 0,
+                            bytes_reserved: 4194304,
+                        },
+                        pages: 2,
+                        pages_peak: 2,
+                        pages_unmapped: 0,
+                        largest_alloc: 262144,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE cpu-65536-50-10
+runtime_in_use=524288,runtime_reserved=12582912,sum_pool_page_peaks=3
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 32768,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 524288,
+                            bytes_padding: 0,
+                            bytes_reserved: 4194304,
+                        },
+                        pages: 2,
+                        pages_peak: 2,
+                        pages_unmapped: 0,
+                        largest_alloc: 262144,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE cpu-65536-50-100
+runtime_in_use=524288,runtime_reserved=12582912,sum_pool_page_peaks=3
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 32768,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 524288,
+                            bytes_padding: 0,
+                            bytes_reserved: 4194304,
+                        },
+                        pages: 2,
+                        pages_peak: 2,
+                        pages_unmapped: 0,
+                        largest_alloc: 262144,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE metal-0-50-10
+runtime_in_use=0,runtime_reserved=0,sum_pool_page_peaks=0
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE metal-1-100-0
+runtime_in_use=512,runtime_reserved=8388608,sum_pool_page_peaks=1
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 512,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 256,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE metal-1024-50-10
+runtime_in_use=8192,runtime_reserved=8388608,sum_pool_page_peaks=1
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 8192,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 4096,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE metal-1048576-50-10
+runtime_in_use=8388608,runtime_reserved=50331648,sum_pool_page_peaks=9
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 65536,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 5242880,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 8388608,
+                            bytes_padding: 0,
+                            bytes_reserved: 41943040,
+                        },
+                        pages: 8,
+                        pages_peak: 8,
+                        pages_unmapped: 0,
+                        largest_alloc: 4194304,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE metal-2097152-50-10
+runtime_in_use=16777216,runtime_reserved=83886080,sum_pool_page_peaks=9
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 59136,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 9437184,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 16777216,
+                            bytes_padding: 0,
+                            bytes_reserved: 75497472,
+                        },
+                        pages: 8,
+                        pages_peak: 8,
+                        pages_unmapped: 0,
+                        largest_alloc: 8388608,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE metal-65536-0-10
+runtime_in_use=524288,runtime_reserved=10485760,sum_pool_page_peaks=2
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 4096,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 524288,
+                            bytes_padding: 0,
+                            bytes_reserved: 2097152,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 262144,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE metal-65536-1-10
+runtime_in_use=524288,runtime_reserved=10485760,sum_pool_page_peaks=2
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 4096,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 524288,
+                            bytes_padding: 0,
+                            bytes_reserved: 2097152,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 262144,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE metal-65536-100-10
+runtime_in_use=524288,runtime_reserved=10485760,sum_pool_page_peaks=2
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 4096,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 524288,
+                            bytes_padding: 0,
+                            bytes_reserved: 2097152,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 262144,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE metal-65536-50-0
+runtime_in_use=524288,runtime_reserved=10485760,sum_pool_page_peaks=2
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 4096,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 524288,
+                            bytes_padding: 0,
+                            bytes_reserved: 2097152,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 262144,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE metal-65536-50-10
+runtime_in_use=524288,runtime_reserved=10485760,sum_pool_page_peaks=2
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 4096,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 524288,
+                            bytes_padding: 0,
+                            bytes_reserved: 2097152,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 262144,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}
+
+CASE metal-65536-50-100
+runtime_in_use=524288,runtime_reserved=10485760,sum_pool_page_peaks=2
+MemoryReport {
+    streams: [
+        StreamMemoryReport {
+            stream: StreamId {
+                value: 0,
+            },
+            pools: MemoryPoolsReport {
+                dynamic: [
+                    MemoryPoolReport {
+                        kind: Exclusive {
+                            max_alloc_size: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 0,
+                        },
+                        pages: 0,
+                        pages_peak: 0,
+                        pages_unmapped: 0,
+                        largest_alloc: 0,
+                    },
+                    MemoryPoolReport {
+                        kind: Sliced {
+                            page_size: 8388608,
+                            max_slice_size: 65536,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 0,
+                            bytes_in_use: 0,
+                            bytes_padding: 0,
+                            bytes_reserved: 8388608,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 4096,
+                    },
+                    MemoryPoolReport {
+                        kind: Adaptive {
+                            page_size: 2097152,
+                            outdated_pages: 0,
+                        },
+                        usage: MemoryUsage {
+                            number_allocs: 2,
+                            bytes_in_use: 524288,
+                            bytes_padding: 0,
+                            bytes_reserved: 2097152,
+                        },
+                        pages: 1,
+                        pages_peak: 1,
+                        pages_unmapped: 0,
+                        largest_alloc: 262144,
+                    },
+                ],
+                persistent: MemoryPoolReport {
+                    kind: Persistent,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+                dedicated: MemoryPoolReport {
+                    kind: Direct,
+                    usage: MemoryUsage {
+                        number_allocs: 0,
+                        bytes_in_use: 0,
+                        bytes_padding: 0,
+                        bytes_reserved: 0,
+                    },
+                    pages: 0,
+                    pages_peak: 0,
+                    pages_unmapped: 0,
+                    largest_alloc: 0,
+                },
+            },
+            auxiliary: [],
+        },
+    ],
+}

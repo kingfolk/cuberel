@@ -119,3 +119,7 @@ resource failures, and clone/drop/cross-thread ownership.
 
 A warmed release comparison with timings, raw samples and reproduction commands
 is available in the [Apple M1 fusion benchmark](benchmarks/fusion-m1-2026-11-09.md).
+
+Configure per-request [resource budgets](resource-budgets.md) to reject a complete
+fragment before allocation. `execute_pipeline_host` includes upload in that check
+and records an `Upload` source boundary; `estimate()` exposes the selected bound.

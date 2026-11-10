@@ -266,7 +266,20 @@ impl Executor {
         let layout = BindingLayout::new(program);
         let host = layout.bind_host(batch, parameters)?;
         let plan = SelectionPlan::new(&self.client, host.extent().row_count(), self.cube_size())?;
-        let predicate = self.submit_expression(program, batch, parameters)?;
+        let columns = layout
+            .buffers()
+            .iter()
+            .filter(|s| matches!(s.source(), crate::abi::BufferSource::Column(_)))
+            .count();
+        self.enforce(self.select_estimate(
+            plan.rows,
+            crate::budget::upload_bytes(u64::from(plan.rows), columns)?,
+            Some(program),
+            plan.stats,
+        )?)?;
+        let predicate = self
+            .without_budget()
+            .submit_expression(program, batch, parameters)?;
         self.selection_from_predicate(plan, predicate, Arc::new(()))
     }
 
@@ -281,6 +294,12 @@ impl Executor {
         self.require_output_type(program, DataType::Bool)?;
         batch.validate(&self.client, &BindingLayout::new(program), parameters)?;
         let plan = SelectionPlan::new(&self.client, batch.row_count(), self.cube_size())?;
+        self.enforce(self.select_estimate(
+            plan.rows,
+            crate::budget::inputs(batch, None)?,
+            Some(program),
+            plan.stats,
+        )?)?;
         let predicate = self.submit_resident_expression(program, batch, parameters)?;
         self.selection_from_predicate(plan, predicate, batch.source.clone())
     }
@@ -313,6 +332,7 @@ impl Executor {
                 return Err(ExecutionError::InvalidMaskValue { index, value });
             }
         }
+        self.enforce(self.select_estimate(rows, u64::from(rows) * 4, None, plan.stats)?)?;
         let handle = (rows != 0).then(|| {
             let bytes: Vec<u8> = mask.iter().flat_map(|v| v.to_ne_bytes()).collect();
             self.upload_bytes(&bytes)
@@ -340,6 +360,12 @@ impl Executor {
             return Err(ExecutionError::SelectionSourceMismatch);
         }
         self.preflight_projection(batch, true, &[("_predicate", program)], parameters)?;
+        self.enforce(self.select_estimate(
+            plan.rows,
+            crate::budget::inputs(batch, Some(selected))?,
+            Some(program),
+            plan.stats,
+        )?)?;
         let predicate = self.submit_selected_expression(program, batch, parameters, selected)?;
         let mask = predicate.values.clone();
         let mut selection = self.submit_selection(
@@ -404,10 +430,8 @@ impl Executor {
         let mut levels: Vec<(Handle, Handle)> = Vec::with_capacity(plan.levels.len());
         let mut input = mask.clone();
         for (level, &len) in plan.levels.iter().enumerate() {
-            let ranks = self.client.empty(len as usize * 4);
-            let totals = self
-                .client
-                .empty(len.div_ceil(self.cube_size()) as usize * 4);
+            let ranks = self.allocate(len as usize * 4);
+            let totals = self.allocate(len.div_ceil(self.cube_size()) as usize * 4);
             #[cfg(all(
                 test,
                 any(feature = "cpu", all(feature = "metal", target_vendor = "apple"))
@@ -441,7 +465,7 @@ impl Executor {
             );
         }
         let count = levels.last().expect("scan levels").1.clone();
-        let indices = self.client.empty(plan.rows as usize * 4);
+        let indices = self.allocate(plan.rows as usize * 4);
         // Scatter is a device consumer of count: no host count read is needed
         // to schedule it or to bounds-check its selected output positions.
         #[cfg(all(

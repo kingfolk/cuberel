@@ -72,7 +72,7 @@ projection, nested filters and Arrow compact export are F3, not F2 capabilities.
 - Empty input validates names/types/parameters and identity, with no buffers,
   launches or readback. Parameter-only programs still use explicit row count.
   The ABI retains the checked U32 active-byte bound (floor(U32_MAX/4) rows per
-  plane). This is not U64 addressing or a unified F7 device-memory budget.
+  plane). This is not U64 addressing; [F7 request budgets](resource-budgets.md) additionally bound logical bytes.
 
 ## Costs and reproduction
 
@@ -121,4 +121,4 @@ On the development Apple host, Rust 1.99.0, pinned CubeCL revision and Arrow
   16-byte value, validity and I32 error planes. There was no second column upload.
 
 No speedup or asynchronous overlap claim follows from these transfer counts.
-F3 selected projection/gather and F7 unified budgets/performance remain separate.
+See [selected projection](selected-projection.md) and [request budgets](resource-budgets.md) for composite execution and measurements.

@@ -1,8 +1,8 @@
 //! Bounded, acyclic resident query fragments with an executable reference path.
 use crate::{
-    Aggregate, AggregateResult, DataType, DeviceAggregates, DeviceBatch, DeviceProjection,
+    Aggregate, AggregateResult, Batch, DataType, DeviceAggregates, DeviceBatch, DeviceProjection,
     DeviceResult, DeviceSelection, ExecutionError, Executor, Field, KernelProgram, Parameters,
-    SelectedColumn,
+    ResourceEstimate, SelectedColumn,
     abi::BindingLayout,
     aggregate::fused::FusedPlan,
     completion::{ExitContext, check_all, synchronize},
@@ -53,6 +53,7 @@ impl Pipeline {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StageKind {
     ResidentInput,
+    Upload,
     Predicate,
     Scan,
     AddOffsets,
@@ -85,7 +86,12 @@ impl StageGraph {
     pub fn kernel_launches(&self) -> usize {
         self.stages
             .iter()
-            .filter(|s| !matches!(s.kind, StageKind::ResidentInput | StageKind::Materialize))
+            .filter(|s| {
+                !matches!(
+                    s.kind,
+                    StageKind::ResidentInput | StageKind::Upload | StageKind::Materialize
+                )
+            })
             .count()
     }
     pub fn is_fused(&self) -> bool {
@@ -112,6 +118,7 @@ pub struct DevicePipeline {
     aggregates: Option<DeviceAggregates>,
     fields: Vec<Field>,
     graph: StageGraph,
+    estimate: ResourceEstimate,
 }
 /// Compact projection columns and one scalar per aggregate. These are separate
 /// shapes: aggregates are not broadcast to the projection row count.
@@ -122,10 +129,13 @@ pub struct PipelineResult {
     pub aggregates: Vec<AggregateResult>,
 }
 impl DevicePipeline {
+    pub fn estimate(&self) -> ResourceEstimate {
+        self.estimate
+    }
     pub fn graph(&self) -> &StageGraph {
         &self.graph
     }
-    fn finish(&self) -> Result<(u32, u32), ExecutionError> {
+    fn handles(&self) -> Vec<cubecl::server::Handle> {
         let mut handles = Vec::new();
         if let Some(s) = &self.selection {
             handles.extend(s.handles());
@@ -139,6 +149,21 @@ impl DevicePipeline {
         if let Some(a) = &self.aggregates {
             handles.extend(a.handles());
         }
+        handles
+    }
+    /// Current result-owned logical allocation bytes, without a device query.
+    /// Excludes runtime pins/cache and allocations held only by external inputs.
+    pub fn residency_bytes(&self) -> u64 {
+        let mut unique = std::collections::HashMap::new();
+        for h in self.handles() {
+            unique
+                .entry(h.memory.clone().binding().id())
+                .or_insert(h.size_in_used());
+        }
+        unique.values().sum()
+    }
+    fn finish(&self) -> Result<(u32, u32), ExecutionError> {
+        let handles = self.handles();
         synchronize(&self.client, &handles)?;
         let mut exit = ExitContext::default();
         // Filter-stage errors take precedence over terminal expressions.
@@ -202,15 +227,62 @@ impl DevicePipeline {
         })
     }
 }
+struct PreparedPipeline {
+    fusion: Result<FusedPlan, &'static str>,
+    reduction: Option<crate::aggregate::ReductionPlan>,
+    estimate: ResourceEstimate,
+}
 impl Executor {
-    /// Validate the complete fragment before any allocation/launch. Auto and
-    /// Unfused both run on this executor's explicitly chosen device.
+    /// Allocation-free validated estimate of the selected device plan. Does not
+    /// enforce this executor's budget, allowing callers to inspect a rejection.
+    pub fn estimate_pipeline(
+        &self,
+        pipeline: &Pipeline,
+        batch: &DeviceBatch,
+        parameters: &Parameters,
+    ) -> Result<ResourceEstimate, ExecutionError> {
+        Ok(self.prepare_pipeline(pipeline, batch, parameters)?.estimate)
+    }
+    pub fn estimate_pipeline_host(
+        &self,
+        pipeline: &Pipeline,
+        batch: &Batch<'_>,
+        parameters: &Parameters,
+    ) -> Result<ResourceEstimate, ExecutionError> {
+        let descriptor = DeviceBatch::describe(&self.client, batch)?;
+        self.estimate_pipeline(pipeline, &descriptor, parameters)
+    }
+    /// Validate and enforce the entire fragment before any new allocation/launch.
     pub fn execute_pipeline(
         &self,
         pipeline: &Pipeline,
         batch: &DeviceBatch,
         parameters: &Parameters,
     ) -> Result<DevicePipeline, ExecutionError> {
+        let plan = self.prepare_pipeline(pipeline, batch, parameters)?;
+        self.enforce(plan.estimate)?;
+        self.submit_pipeline(pipeline, batch, parameters, plan, false)
+    }
+    /// Upload and execute as one budgeted request. Even late invalid parameters
+    /// or an over-budget downstream stage reject before the first upload.
+    pub fn execute_pipeline_host(
+        &self,
+        pipeline: &Pipeline,
+        batch: &Batch<'_>,
+        parameters: &Parameters,
+    ) -> Result<DevicePipeline, ExecutionError> {
+        let descriptor = DeviceBatch::describe(&self.client, batch)?;
+        let plan = self.prepare_pipeline(pipeline, &descriptor, parameters)?;
+        self.enforce(plan.estimate)?;
+        let uploaded = self.without_budget().upload(batch)?;
+        self.submit_pipeline(pipeline, &uploaded, parameters, plan, true)
+    }
+    fn prepare_pipeline(
+        &self,
+        pipeline: &Pipeline,
+        batch: &DeviceBatch,
+        parameters: &Parameters,
+    ) -> Result<PreparedPipeline, ExecutionError> {
         batch.validate_client(&self.client)?;
         let invalid = |reason| ExecutionError::InvalidPipeline { reason };
         if pipeline.filters.len() > 16
@@ -280,8 +352,6 @@ impl Executor {
         } else {
             None
         };
-        let mut graph = StageGraph::default();
-        let source = graph.push(StageKind::ResidentInput, Vec::new());
         let prepared = if pipeline.fusion == FusionMode::Unfused {
             Err("fusion disabled by caller")
         } else if !pipeline.projections.is_empty() || pipeline.filters.len() > 1 {
@@ -295,6 +365,76 @@ impl Executor {
                 parameters,
             )
         };
+
+        if pipeline.fusion == FusionMode::Required
+            && let Err(reason) = &prepared
+        {
+            return Err(invalid(reason));
+        }
+        let mut account = crate::budget::Account::new(
+            u64::from(batch.row_count()),
+            batch.logical_bytes()?,
+            if pipeline.projections.is_empty() {
+                1
+            } else {
+                u64::from(batch.row_count()).max(u64::from(!aggregate_refs.is_empty()))
+            },
+        );
+        match &prepared {
+            Ok(plan) => plan.account(&mut account)?,
+            Err(_) => {
+                for predicate in &pipeline.filters {
+                    account.expression(predicate, false)?;
+                    account.selection(self.selection_plan(batch.row_count())?)?;
+                }
+                for (_, program) in &pipeline.projections {
+                    account.expression(program, true)?;
+                }
+                if let Some(reduction) = &reduction {
+                    account.aggregates(&aggregate_refs, reduction)?;
+                }
+            }
+        }
+        Ok(PreparedPipeline {
+            fusion: prepared,
+            reduction,
+            estimate: account.finish()?,
+        })
+    }
+    fn submit_pipeline(
+        &self,
+        pipeline: &Pipeline,
+        batch: &DeviceBatch,
+        parameters: &Parameters,
+        plan: PreparedPipeline,
+        uploaded: bool,
+    ) -> Result<DevicePipeline, ExecutionError> {
+        let engine = self.without_budget();
+        let invalid = |reason| ExecutionError::InvalidPipeline { reason };
+        let PreparedPipeline {
+            fusion: prepared,
+            reduction,
+            estimate,
+        } = plan;
+        let projection_refs: Vec<_> = pipeline
+            .projections
+            .iter()
+            .map(|(n, p)| (n.as_str(), p))
+            .collect();
+        let aggregate_refs: Vec<_> = pipeline
+            .aggregates
+            .iter()
+            .map(|(n, a)| (n.as_str(), a.clone()))
+            .collect();
+        let mut graph = StageGraph::default();
+        let source = graph.push(
+            if uploaded {
+                StageKind::Upload
+            } else {
+                StageKind::ResidentInput
+            },
+            Vec::new(),
+        );
         let mut dense = None;
         let mut selected = None;
         let mut selection = None;
@@ -310,7 +450,7 @@ impl Executor {
                     last = graph.push(StageKind::AggregateMerge, vec![last]);
                 }
                 terminals.push(last);
-                Some(plan.submit(self, batch, &aggregate_refs, parameters)?)
+                Some(plan.submit(&engine, batch, &aggregate_refs, parameters)?)
             }
             Err(reason) => {
                 if pipeline.fusion == FusionMode::Required {
@@ -320,9 +460,9 @@ impl Executor {
                 let mut current = source;
                 for predicate in &pipeline.filters {
                     let next = if let Some(parent) = &selection {
-                        self.filter_selected(predicate, batch, parent, parameters)?
+                        engine.filter_selected(predicate, batch, parent, parameters)?
                     } else {
-                        self.select_resident(predicate, batch, parameters)?
+                        engine.select_resident(predicate, batch, parameters)?
                     };
                     if batch.row_count() != 0 {
                         current = graph.push(StageKind::Predicate, vec![current]);
@@ -339,11 +479,15 @@ impl Executor {
                 }
                 if !projection_refs.is_empty() {
                     if let Some(s) = &selection {
-                        selected =
-                            Some(self.project_selected(batch, s, &projection_refs, parameters)?);
+                        selected = Some(engine.project_selected(
+                            batch,
+                            s,
+                            &projection_refs,
+                            parameters,
+                        )?);
                     } else {
                         dense = Some(
-                            self.execute_many_resident(
+                            engine.execute_many_resident(
                                 &pipeline
                                     .projections
                                     .iter()
@@ -388,14 +532,15 @@ impl Executor {
                         terminals.push(last);
                     }
                     Some(if let Some(s) = &selection {
-                        self.aggregate_selected(batch, s, &aggregate_refs, parameters)?
+                        engine.aggregate_selected(batch, s, &aggregate_refs, parameters)?
                     } else {
-                        self.aggregate_resident(batch, &aggregate_refs, parameters)?
+                        engine.aggregate_resident(batch, &aggregate_refs, parameters)?
                     })
                 }
             }
         };
         graph.push(StageKind::Materialize, terminals);
+        debug_assert_eq!(estimate.stages, graph.stages.len() as u64);
         Ok(DevicePipeline {
             client: self.client.clone(),
             rows: batch.row_count(),
@@ -409,6 +554,7 @@ impl Executor {
                 .map(|(n, p)| Field::new(n, p.output_type()).with_nullable(p.output_nullable()))
                 .collect(),
             graph,
+            estimate,
         })
     }
 }
