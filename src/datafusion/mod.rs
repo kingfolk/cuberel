@@ -3,6 +3,9 @@
 //! Registration preserves DataFusion's default planning pipeline. Device placement
 //! is introduced separately; registering this initial adapter never launches work.
 
+mod capability;
+pub use capability::{TranslatedExpression, Unsupported, translate_expression};
+
 use std::sync::Arc;
 
 use ::datafusion::{
