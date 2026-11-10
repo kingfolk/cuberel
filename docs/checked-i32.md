@@ -98,7 +98,7 @@ shared DAGs normalize to the same cache identity.
 
 ## Arrow integration
 
-The optional Arrow 60 adapter now accepts Float32 and Int32. Direct named-array
+The optional Arrow 59.2 adapter accepts Float32 and Int32. Direct named-array
 binding uses `&dyn Array`, permitting mixed numeric columns. RecordBatch binding
 matches each referenced field against the program's exact type. Unsupported Arrow
 types and a supported numeric type mismatch have distinct structured errors.

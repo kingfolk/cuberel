@@ -14,15 +14,20 @@ cpu = ["cubecl/cpu"]
 metal = ["cubecl/metal-native"]
 # Host Arrow adapters are independent of runtime selection.
 arrow = ["dep:arrow-array", "dep:arrow-buffer", "dep:arrow-schema"]
+# SQL planning remains opt-in and does not require a CubeCL runtime.
+datafusion = ["arrow", "dep:datafusion", "dep:tokio", "dep:futures"]
 
 [dependencies]
 # This revision is on kingfolk's fork; it is not an upstream release.
 cubecl = { git = "https://github.com/kingfolk/cubecl.git", rev = "5037c0639ce3b1205392bdbe43dcf25e2ea09e29", default-features = false, features = ["std"] }
 
 # Pin the public adapter types and bitmap semantics to one Arrow release.
-arrow-array = { version = "=60.0.0", default-features = false, optional = true }
-arrow-buffer = { version = "=60.0.0", default-features = false, optional = true }
-arrow-schema = { version = "=60.0.0", default-features = false, optional = true }
+arrow-array = { version = "=59.2.0", default-features = false, optional = true }
+arrow-buffer = { version = "=59.2.0", default-features = false, optional = true }
+arrow-schema = { version = "=59.2.0", default-features = false, optional = true }
+datafusion = { version = "=55.2.0", default-features = false, features = ["sql"], optional = true }
+tokio = { version = "1.52", features = ["rt-multi-thread", "sync", "macros"], optional = true }
+futures = { version = "0.3", optional = true }
 
 [[example]]
 name = "arrow_expr"

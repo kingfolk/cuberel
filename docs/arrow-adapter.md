@@ -1,15 +1,16 @@
 # Arrow host boundary adapters
 
 Enable `arrow` to use Arrow input/output with the existing runtime expression
-compiler. `arrow-array`, `arrow-buffer` and `arrow-schema` are pinned to 60.0.0.
+compiler. `arrow-array`, `arrow-buffer` and `arrow-schema` are pinned to 59.2.0
+to share public types with DataFusion 55.2. See the [alignment contract](datafusion-integration.md).
 This optional feature is independent of CPU/Metal runtime features and is off by
 default. The CubeCL revision remains unchanged. [Checked I32](checked-i32.md) extends
 this adapter under binding ABI v4 and codegen v9.
 
 ```toml
 cuberel = { path = "...", features = ["arrow"] }
-arrow-array = "=60.0.0"
-arrow-schema = "=60.0.0"
+arrow-array = "=59.2.0"
+arrow-schema = "=59.2.0"
 ```
 
 I32 columns, nullable scalar bindings and Int32Array output are now supported;
@@ -95,7 +96,7 @@ All-valid arrays need no retained dense validity; the existing executor synthesi
 ones if the program's nullable ABI requires them. Arrow null payloads remain
 initialized valid F32 bit patterns, with no logical meaning. The emitter sanitizes
 invalid payloads as before; valid NaN/infinity/signed zero remain values. Arrow's
-[array documentation](https://docs.rs/arrow-array/60.0.0/arrow_array/) describes
+[array documentation](https://docs.rs/arrow-array/59.2.0/arrow_array/) describes
 the typed values and zero-copy slicing APIs used here.
 
 ## Output ownership and costs

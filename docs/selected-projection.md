@@ -67,7 +67,7 @@ selections, duplicate rows, in-place gather or raw handle imports.
 
 ## Compact readback and Arrow
 
-`materialize_arrow` returns an Arrow 60 `RecordBatch` whose row count equals the
+`materialize_arrow` returns an Arrow 59.2 `RecordBatch` whose row count equals the
 device count. Names/order/types/prepared nullability are preserved. Bool payloads
 and validity are packed into Arrow bitmaps on host; numeric owned vectors move
 into Arrow arrays. This is not zero-copy GPU Arrow. Existing `ArrowBatch` adapters

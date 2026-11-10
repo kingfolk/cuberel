@@ -28,14 +28,19 @@
 //! Backend features:
 //! - `cpu` (default): CubeCL's LLVM-based CPU runtime.
 //! - `metal`: CubeCL's native Metal runtime on Apple platforms.
-//! - `arrow`: Arrow 60 host array/RecordBatch adapters, independent of runtimes.
+//! - `arrow`: Arrow 59.2 host array/RecordBatch adapters, independent of runtimes.
+//! - `datafusion`: optional DataFusion 55.2 SQL adapter, implying `arrow`.
 //!
 //! Both features can be enabled together. Backend selection must be explicit in
 //! examples and tests, so a missing GPU cannot silently fall back to the CPU.
 
-/// Host Arrow 60 adapters, available with the `arrow` feature.
+/// Host Arrow 59.2 adapters, available with the `arrow` feature.
 #[cfg(feature = "arrow")]
 pub mod arrow;
+
+/// Opt-in DataFusion SQL integration. Independent of CubeCL runtime features.
+#[cfg(feature = "datafusion")]
+pub mod datafusion;
 
 pub mod abi;
 #[path = "device_abi.rs"]
