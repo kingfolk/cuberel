@@ -306,3 +306,7 @@ Arrow export adds Int64 output without extending input types. See the
 aggregate fragments fuse their first stage; `FusionMode::Unfused` keeps an
 executable reference path. See [stage graphs, fusion and completion](docs/device-pipeline.md)
 and run `cargo run --locked --example device_pipeline -- cpu` (or native `metal`).
+
+Selections retire private masks and scan workspace after their final consumers
+are queued, while retaining count/error checks. See [selection-only residency](docs/selection-residency.md)
+for ownership guarantees, diagnostics and the before/after measurement.

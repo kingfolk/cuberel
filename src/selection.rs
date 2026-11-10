@@ -1,6 +1,6 @@
 //! Stable row selection with an explicit device-to-host completion boundary.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::completion::{ExitContext, synchronize};
 use cubecl::{prelude::Client, server::Handle};
@@ -24,6 +24,34 @@ pub struct SelectionStats {
     pub indices_capacity_bytes: u64,
 }
 
+/// Logical allocations kept by a selection, deduplicated across its completion
+/// history. Excludes runtime in-flight pins, allocator caches and external owners.
+/// Mask/validity outputs and scan workspace have no selection-owned references.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SelectionResidency {
+    pub stages: usize,
+    pub indices_bytes: u64,
+    pub count_bytes: u64,
+    pub error_bytes: u64,
+    /// Source buffers and independent completion witnesses, not temporary masks.
+    pub dependency_bytes: u64,
+}
+impl SelectionResidency {
+    pub fn total_bytes(&self) -> u64 {
+        self.indices_bytes + self.count_bytes + self.error_bytes + self.dependency_bytes
+    }
+}
+
+// Completion history owns counts and error checks, never ancestor selections or
+// predicate value/validity outputs. A flat vector avoids recursive ancestor drop.
+struct SelectionCheck {
+    capacity: u32,
+    count: Option<Handle>,
+    predicate: Option<SubmittedExpression>,
+    selected: bool,
+    retained: Vec<Handle>,
+}
+
 /// Owned, pending stable selection. Capacity is the source row count, not the
 /// selected length. Only [`Self::materialize`] exposes completed host indices.
 /// Clones share immutable buffers and the same source identity.
@@ -34,14 +62,11 @@ pub struct DeviceSelection {
     counters: Arc<ExecutionCounters>,
     capacity: u32,
     source: Arc<()>,
-    completion_id: Arc<()>,
     indices: Option<Handle>,
-    count: Option<Handle>,
-    // Also retain every intermediate and input until completion or runtime-safe
-    // drop. CubeCL's queued bindings own their memory if this object is dropped.
+    // Current outputs and independent completion witnesses. Queued bindings and
+    // ordered backend resources protect temporary use after our references drop.
     retained: Vec<Handle>,
-    predicate: Option<Arc<SubmittedExpression>>,
-    dependency: Option<Arc<crate::DeviceProjection>>,
+    checks: Arc<Vec<Arc<SelectionCheck>>>,
     stats: SelectionStats,
 }
 
@@ -50,7 +75,12 @@ impl DeviceSelection {
         self.indices.clone().expect("nonempty selection")
     }
     pub(crate) fn count_handle(&self) -> Handle {
-        self.count.clone().expect("nonempty selection")
+        self.checks
+            .last()
+            .expect("selection check")
+            .count
+            .clone()
+            .expect("nonempty selection")
     }
     pub fn capacity(&self) -> u32 {
         self.capacity
@@ -79,37 +109,84 @@ impl DeviceSelection {
         ExitContext::default().count(self)
     }
     pub(crate) fn handles(&self) -> Vec<Handle> {
-        self.retained.clone()
+        let mut handles = self.retained.clone();
+        for check in self.checks.iter() {
+            handles.extend(check.count.iter().cloned());
+            handles.extend(check.retained.iter().cloned());
+            if let Some(predicate) = &check.predicate {
+                handles.extend(predicate.retained.iter().cloned());
+            }
+        }
+        handles
+    }
+    /// Inspect Cuberel-owned residency without synchronizing or reading device data.
+    pub fn residency(&self) -> SelectionResidency {
+        let id = |h: &Handle| h.memory.clone().binding().id();
+        let mut unique = HashMap::new();
+        for h in self.handles() {
+            unique.entry(id(&h)).or_insert(h.size_in_used());
+        }
+        let mut take = |h: &Handle| unique.remove(&id(h)).unwrap_or(0);
+        let indices_bytes = self.indices.as_ref().map_or(0, &mut take);
+        let count_bytes = self
+            .checks
+            .iter()
+            .filter_map(|c| c.count.as_ref())
+            .map(&mut take)
+            .sum();
+        let error_bytes = self
+            .checks
+            .iter()
+            .filter_map(|c| c.predicate.as_ref().and_then(|p| p.error.as_ref()))
+            .map(&mut take)
+            .sum();
+        SelectionResidency {
+            stages: self.checks.len(),
+            indices_bytes,
+            count_bytes,
+            error_bytes,
+            dependency_bytes: unique.values().sum(),
+        }
     }
     pub(crate) fn count_in(&self, exit: &mut ExitContext) -> Result<u32, ExecutionError> {
-        let key = Arc::as_ptr(&self.completion_id) as usize;
-        if let Some((_, count)) = exit.counts.iter().find(|(id, _)| *id == key) {
-            return Ok(*count);
+        let mut previous = 0;
+        for check in self.checks.iter() {
+            let key = Arc::as_ptr(check) as usize;
+            if let Some((_, count)) = exit.counts.iter().find(|(id, _)| *id == key) {
+                previous = *count;
+                continue;
+            }
+            let count = if check.capacity == 0 {
+                0
+            } else {
+                if let Some(predicate) = &check.predicate {
+                    if check.selected {
+                        predicate.check_selected_errors(&self.client, &self.counters, previous)?;
+                    } else {
+                        predicate.check_errors(&self.client, &self.counters)?;
+                    }
+                }
+                self.counters
+                    .count_reads
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let bytes = self.counters.read(
+                    &self.client,
+                    check.count.clone().expect("nonempty count"),
+                    4,
+                )?;
+                let count = u32::from_ne_bytes(bytes.as_chunks::<4>().0[0]);
+                if count > check.capacity {
+                    return Err(ExecutionError::InvalidSelectionCount {
+                        count,
+                        capacity: check.capacity,
+                    });
+                }
+                count
+            };
+            exit.counts.push((key, count));
+            previous = count;
         }
-        if self.capacity == 0 {
-            return Ok(0);
-        }
-        if let Some(dependency) = &self.dependency {
-            dependency.complete_in(exit)?;
-        }
-        if let Some(predicate) = &self.predicate {
-            predicate.check_errors(&self.client, &self.counters)?;
-        }
-        self.counters
-            .count_reads
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let bytes =
-            self.counters
-                .read(&self.client, self.count.clone().expect("nonempty count"), 4)?;
-        let count = u32::from_ne_bytes(bytes.as_chunks::<4>().0[0]);
-        if count > self.capacity {
-            return Err(ExecutionError::InvalidSelectionCount {
-                count,
-                capacity: self.capacity,
-            });
-        }
-        exit.counts.push((key, count));
-        Ok(count)
+        Ok(previous)
     }
 
     /// Wait for every stage (including predicate error/validity planes), check
@@ -136,6 +213,44 @@ impl DeviceSelection {
     }
 }
 
+fn completion_predicate(
+    mut predicate: SubmittedExpression,
+    selected: Option<&DeviceSelection>,
+) -> SubmittedExpression {
+    let mut retired: Vec<_> = predicate
+        .values
+        .iter()
+        .chain(&predicate.validity)
+        .map(|h| h.memory.clone().binding().id())
+        .collect();
+    if let Some(selected) = selected {
+        retired.extend(
+            selected
+                .indices
+                .iter()
+                .map(|h| h.memory.clone().binding().id()),
+        );
+        retired.extend(
+            selected
+                .checks
+                .last()
+                .and_then(|c| c.count.as_ref())
+                .map(|h| h.memory.clone().binding().id()),
+        );
+    }
+    #[cfg(all(
+        test,
+        any(feature = "cpu", all(feature = "metal", target_vendor = "apple"))
+    ))]
+    retirement_tests::validity(predicate.validity.as_ref());
+    predicate
+        .retained
+        .retain(|h| !retired.contains(&h.memory.clone().binding().id()));
+    predicate.values = None;
+    predicate.validity = None;
+    predicate
+}
+
 impl Executor {
     /// Execute a Bool predicate with WHERE semantics and compact it on device.
     /// NULL/false are discarded; selected original row IDs are strictly ordered.
@@ -151,7 +266,7 @@ impl Executor {
         let layout = BindingLayout::new(program);
         let host = layout.bind_host(batch, parameters)?;
         let plan = SelectionPlan::new(&self.client, host.extent().row_count(), self.cube_size())?;
-        let predicate = Arc::new(self.submit_expression(program, batch, parameters)?);
+        let predicate = self.submit_expression(program, batch, parameters)?;
         self.selection_from_predicate(plan, predicate, Arc::new(()))
     }
 
@@ -166,14 +281,14 @@ impl Executor {
         self.require_output_type(program, DataType::Bool)?;
         batch.validate(&self.client, &BindingLayout::new(program), parameters)?;
         let plan = SelectionPlan::new(&self.client, batch.row_count(), self.cube_size())?;
-        let predicate = Arc::new(self.submit_resident_expression(program, batch, parameters)?);
+        let predicate = self.submit_resident_expression(program, batch, parameters)?;
         self.selection_from_predicate(plan, predicate, batch.source.clone())
     }
 
     fn selection_from_predicate(
         &self,
         plan: SelectionPlan,
-        predicate: Arc<SubmittedExpression>,
+        predicate: SubmittedExpression,
         source: Arc<()>,
     ) -> Result<DeviceSelection, ExecutionError> {
         // The expression emitter canonicalizes invalid Bool payload to false,
@@ -181,8 +296,7 @@ impl Executor {
         let mut selection = self.submit_selection(
             plan,
             predicate.values.clone(),
-            predicate.retained.clone(),
-            Some(predicate),
+            Some(completion_predicate(predicate, None)),
             None,
         )?;
         selection.source = source;
@@ -203,8 +317,7 @@ impl Executor {
             let bytes: Vec<u8> = mask.iter().flat_map(|v| v.to_ne_bytes()).collect();
             self.upload_bytes(&bytes)
         });
-        let retained = handle.iter().cloned().collect();
-        self.submit_selection(plan, handle, retained, None, None)
+        self.submit_selection(plan, handle, None, None)
     }
 
     /// Apply another WHERE only to currently selected rows. Results keep stable
@@ -223,24 +336,19 @@ impl Executor {
                 reason: "nested selection needs 7 buffer bindings including metadata",
             });
         }
-        let predicate = Arc::new(self.project_selected(
-            batch,
-            selected,
-            &[("_predicate", program)],
-            parameters,
-        )?);
-        let submitted = &predicate.outputs[0].submitted;
-        let mut retained = selected.retained.clone();
-        retained.extend(submitted.retained.iter().cloned());
+        if !selected.belongs_to(batch) {
+            return Err(ExecutionError::SelectionSourceMismatch);
+        }
+        self.preflight_projection(batch, true, &[("_predicate", program)], parameters)?;
+        let predicate = self.submit_selected_expression(program, batch, parameters, selected)?;
+        let mask = predicate.values.clone();
         let mut selection = self.submit_selection(
             plan,
-            submitted.values.clone(),
-            retained,
-            None,
+            mask,
+            Some(completion_predicate(predicate, Some(selected))),
             Some(selected),
         )?;
         selection.source = batch.source.clone();
-        selection.dependency = Some(predicate);
         Ok(selection)
     }
 
@@ -248,24 +356,48 @@ impl Executor {
         &self,
         plan: SelectionPlan,
         mask: Option<Handle>,
-        mut retained: Vec<Handle>,
-        predicate: Option<Arc<SubmittedExpression>>,
+        predicate: Option<SubmittedExpression>,
         selected: Option<&DeviceSelection>,
     ) -> Result<DeviceSelection, ExecutionError> {
+        let mut checks = selected
+            .map(|s| s.checks.as_ref().clone())
+            .unwrap_or_default();
+        // Preserve independent witnesses on a parent without keeping its indices.
+        let retained = selected
+            .map(|s| {
+                s.retained
+                    .iter()
+                    .filter(|h| {
+                        let id = h.memory.clone().binding().id();
+                        !s.indices
+                            .iter()
+                            .chain(s.checks.last().and_then(|c| c.count.as_ref()))
+                            .any(|output| output.memory.clone().binding().id() == id)
+                    })
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut check = SelectionCheck {
+            capacity: plan.rows,
+            count: None,
+            predicate,
+            selected: selected.is_some(),
+            retained,
+        };
         let mut selection = DeviceSelection {
             client: self.client.clone(),
             counters: self.counters.clone(),
             capacity: plan.rows,
             source: Arc::new(()),
-            completion_id: Arc::new(()),
             indices: None,
-            count: None,
             retained: Vec::new(),
-            predicate,
-            dependency: None,
+            checks: Arc::new(Vec::new()),
             stats: plan.stats,
         };
         if plan.rows == 0 {
+            checks.push(Arc::new(check));
+            selection.checks = Arc::new(checks);
             return Ok(selection);
         }
         let mask = mask.expect("validated nonempty mask");
@@ -276,6 +408,11 @@ impl Executor {
             let totals = self
                 .client
                 .empty(len.div_ceil(self.cube_size()) as usize * 4);
+            #[cfg(all(
+                test,
+                any(feature = "cpu", all(feature = "metal", target_vendor = "apple"))
+            ))]
+            retirement_tests::workspace(&ranks, &totals, len.div_ceil(self.cube_size()) == 1);
             if level == 0
                 && let Some(selected) = selected
             {
@@ -292,7 +429,6 @@ impl Executor {
             } else {
                 self.selection_launch(Stage::Scan, len, &[input, ranks.clone(), totals.clone()]);
             }
-            retained.extend([ranks.clone(), totals.clone()]);
             input = totals.clone();
             levels.push((ranks, totals));
         }
@@ -308,6 +444,11 @@ impl Executor {
         let indices = self.client.empty(plan.rows as usize * 4);
         // Scatter is a device consumer of count: no host count read is needed
         // to schedule it or to bounds-check its selected output positions.
+        #[cfg(all(
+            test,
+            any(feature = "cpu", all(feature = "metal", target_vendor = "apple"))
+        ))]
+        retirement_tests::mask(&self.client, self.settings(), &mask);
         if let Some(selected) = selected {
             self.selection_launch(
                 Stage::ScatterSelected,
@@ -328,10 +469,15 @@ impl Executor {
                 &[mask, levels[0].0.clone(), count.clone(), indices.clone()],
             );
         }
-        retained.push(indices.clone());
+        // All consumers are now enqueued. Dropping local mask/validity/workspace
+        // references delegates in-flight use and ordered reuse to CubeCL.
+        // Every scan/rank path feeds count or indices, so backend taint travels
+        // to retained outputs; checked predicate errors have independent planes.
+        check.count = Some(count.clone());
+        checks.push(Arc::new(check));
+        selection.retained = vec![indices.clone(), count];
         selection.indices = Some(indices);
-        selection.count = Some(count);
-        selection.retained = retained;
+        selection.checks = Arc::new(checks);
         Ok(selection)
     }
 
@@ -513,7 +659,13 @@ pub(crate) mod completion_tests {
         assert_eq!(selection.materialize().unwrap(), [0, 2]);
         let mut bad_count = selection.clone();
         let counter = client.create_from_slice(&4_u32.to_ne_bytes());
-        bad_count.count = Some(counter.clone());
+        bad_count.checks = std::sync::Arc::new(vec![std::sync::Arc::new(super::SelectionCheck {
+            capacity: 3,
+            count: Some(counter.clone()),
+            predicate: None,
+            selected: false,
+            retained: Vec::new(),
+        })]);
         bad_count.retained.push(counter);
         assert!(matches!(
             bad_count.materialize(),
@@ -552,3 +704,10 @@ pub(crate) mod completion_tests {
         exercise(Device::metal(Default::default()).expect("native Metal required"));
     }
 }
+
+#[cfg(all(
+    test,
+    any(feature = "cpu", all(feature = "metal", target_vendor = "apple"))
+))]
+#[path = "selection/retirement_tests.rs"]
+mod retirement_tests;

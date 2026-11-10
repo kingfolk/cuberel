@@ -472,6 +472,39 @@ impl SubmittedExpression {
         Ok(OutputBytes { values, validity })
     }
 
+    /// Selected error words encode original row + 1; only the active prefix is initialized.
+    pub(crate) fn check_selected_errors(
+        &self,
+        client: &Client,
+        counters: &ExecutionCounters,
+        count: u32,
+    ) -> Result<(), ExecutionError> {
+        if count > self.rows {
+            return Err(ExecutionError::InvalidSelectionCount {
+                count,
+                capacity: self.rows,
+            });
+        }
+        if count != 0
+            && let Some(error) = &self.error
+        {
+            let handle = error.clone().offset_end(u64::from(self.rows - count) * 4);
+            let flags = counters.read(client, handle, count as usize * 4)?;
+            let first = flags
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|b| u32::from_ne_bytes(*b))
+                .filter(|&v| v != 0)
+                .min();
+            if let Some(row) = first {
+                return Err(ExecutionError::IntegerOverflow {
+                    row: (row - 1) as usize,
+                });
+            }
+        }
+        Ok(())
+    }
     pub(crate) fn check_errors(
         &self,
         client: &Client,

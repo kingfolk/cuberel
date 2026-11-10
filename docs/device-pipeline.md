@@ -90,10 +90,10 @@ With `arrow`, `materialize_arrow()` or the completed result's `into_arrow()` ret
 RecordBatches plus `row_count`. Absent output branches are `None`; an empty
 projection still has its schema and zero rows. Arrow packing happens on host.
 
-Mask lifetime reclamation on the reference path is separate future work. This
-feature preserves all its existing buffers until safe completion/drop. Avoiding
-an intermediate allocation through fusion does not implement selection-only
-residency or a new allocator.
+The reference compaction path now uses [selection-only residency](selection-residency.md):
+private masks/validity/workspace retire after enqueue of their final consumers,
+while count/error checks remain. This is separate from avoiding allocations through
+fusion; neither change adds a custom allocator.
 
 ## Reproduce
 

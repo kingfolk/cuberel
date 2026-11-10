@@ -68,4 +68,4 @@ pub use pipeline::{
 pub use resident::{DeviceBatch, DeviceResult, ExecutionStats, HostColumn};
 pub use schema::{ColumnId, DataType, Field, ParameterId, Schema};
 pub use selected::{DeviceProjection, SelectedColumn};
-pub use selection::{DeviceSelection, SelectionStats};
+pub use selection::{DeviceSelection, SelectionResidency, SelectionStats};
