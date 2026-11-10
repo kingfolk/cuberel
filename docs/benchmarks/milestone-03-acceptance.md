@@ -138,3 +138,6 @@ The 11 cases per backend are (N, pass %, NULL %): (0,50,10), (1,100,0),
 - [22 runtime cases and pool snapshot totals](milestone-03-runtime-cases.csv)
 - [Full pool reports](milestone-03-runtime-pools.txt)
 - [Budget contract](../resource-budgets.md)
+
+For wider checked expressions, multiple projections/aggregates and verified
+fusion versus fallback comparisons, see the [complex pipeline benchmark](complex-pipeline.md).
