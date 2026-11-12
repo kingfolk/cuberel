@@ -6,9 +6,11 @@
 mod capability;
 mod exec;
 mod fragment;
+mod global;
 pub use capability::{TranslatedExpression, Unsupported, translate_expression};
 pub use exec::CubeExec;
 pub use fragment::{FragmentInspection, inspect_fragment};
+pub use global::{CubeAggregateExec, GlobalAggregateInspection, inspect_global_aggregate};
 
 use std::sync::Arc;
 

@@ -24,11 +24,15 @@ DataFusion may insert Repartition between filter and projection; that remains a
 CPU/Arrow boundary. The example uses `target_partitions=1` to demonstrate one
 combined filter/project fragment, while tests also retain default/multi-partition
 plans. The adapter does not silently change the caller's partition settings.
-Global aggregates, sort, limit, functions and unsupported types retain their
+Unsupported aggregates, sort, limit, functions and unsupported types retain their
 DataFusion operators. Discovery continues recursively below a region's input,
 so both sides of a CPU or exchange boundary can contain independent CubeExecs.
 Adjacent CubeExecs separated by an intermediate computation still have an Arrow
 boundary; F4 does not inline that computation into a later filter.
+
+The separate [bounded SQL aggregate adapter](sql-global-aggregates.md) recognizes
+supported global COUNT/Int32 MIN/MAX regions and merges completed batch states
+into one SQL row at EOF.
 
 Each input batch uploads referenced numeric columns once, executes the M2
 pipeline with device selection/counts, then completes and exports host Arrow.
