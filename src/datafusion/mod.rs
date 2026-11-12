@@ -1,7 +1,7 @@
 //! Optional DataFusion integration, pinned to DataFusion 55.2 / Arrow 59.2.
 //!
 //! Registration preserves DataFusion's default planning pipeline. Only an
-//! explicitly supplied executor enables supported filter/project placement.
+//! explicitly supplied executor enables supported device fragments.
 
 mod capability;
 mod exec;

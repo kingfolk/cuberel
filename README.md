@@ -10,7 +10,7 @@ The library builds and validates runtime expressions, lowers nullable `f32`
 arithmetic, checked I32 arithmetic and nullable boolean predicates to CubeCL IR, and executes on a selected CPU or native
 Metal client. No `#[cube]`, Rust source generation or runtime rustc invocation is
 used by this query path. Optional Arrow host adapters and opt-in DataFusion SQL
-registration and explicitly selected filter/project device fragments are available.
+registration and explicitly selected filter/project/global-aggregate device fragments are available.
 The backend smoke example separately initializes a real device and round-trips
 a buffer; it does **not** compile or launch a compute kernel.
 
@@ -23,7 +23,7 @@ supported filter/project `CubeExec` fragments. Registration preserves the
 standard optimizer rules and appends a final property check. CPU planning works
 without a CubeCL runtime. See the [registration contract](docs/datafusion-integration.md),
 [semantic allow-list](docs/sql-semantics.md) and [execution limits](docs/sql-execution.md).
-Bounded global COUNT and Int32 MIN/MAX are described in
+Bounded global COUNT, Int32 MIN/MAX and widening Int32 SUM are described in
 [SQL aggregation](docs/sql-global-aggregates.md), including cross-batch and
 partition merge contracts.
 

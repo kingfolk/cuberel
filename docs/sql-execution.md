@@ -31,7 +31,7 @@ Adjacent CubeExecs separated by an intermediate computation still have an Arrow
 boundary; F4 does not inline that computation into a later filter.
 
 The separate [bounded SQL aggregate adapter](sql-global-aggregates.md) recognizes
-supported global COUNT/Int32 MIN/MAX regions and merges completed batch states
+supported global COUNT/Int32 MIN/MAX/SUM regions and merges completed batch states
 into one SQL row at EOF.
 
 Each input batch uploads referenced numeric columns once, executes the M2

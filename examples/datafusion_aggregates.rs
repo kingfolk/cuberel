@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
         )?),
     )?;
-    let query = "SELECT count(*) AS n, count(x) AS valid, min(x) AS lo, max(x) AS hi FROM t WHERE x >= CAST(30 AS INT)";
+    let query = "SELECT sum(x) AS total, count(*) AS n, count(x) AS valid, min(x) AS lo, max(x) AS hi FROM t WHERE x >= CAST(30 AS INT)";
     let plan = ctx.sql(query).await?.create_physical_plan().await?;
     println!("{query}\n{}", displayable(plan.as_ref()).indent(true));
     let result = collect(plan, ctx.task_ctx()).await?;
