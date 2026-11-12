@@ -9,18 +9,26 @@ are independent: this is not a global device-memory reservation service.
 
 ## Supported regions
 
-F3 recognizes a terminal projection with at most one immediate filter, a
-standalone projection, or a standalone filter (including its positional output
-projection). Inputs must be finite. All expressions in a node must pass the
-[capability checks](sql-semantics.md); there is no partial expression extraction.
-Filters with fetch stay on CPU. Projection above an already projected filter
-requires remapping and remains a boundary. More general chain recognition is F4.
+F4 recognizes a contiguous chain of filters and pure column projections ending
+in a supported projection or filter. Rename/reorder/drop mappings and a
+FilterExec's output projection are composed by field position. Predicates retain
+their bottom-to-top execution order, and all terminal outputs are evaluated only
+after those filters. Inputs must be finite. All expressions in a node must pass
+the [capability checks](sql-semantics.md); there is no partial expression extraction.
+An intermediate computed projection stays a boundary, even when its output is
+unused above: moving or deleting it could change checked errors. Filters with
+fetch stay on CPU. The current limits are 16 filters, 32 terminal outputs and
+64 physical nodes per region. If a longer chain fails translation or a limit,
+the longest valid root prefix is used, with its lower boundary kept intact.
 DataFusion may insert Repartition between filter and projection; that remains a
 CPU/Arrow boundary. The example uses `target_partitions=1` to demonstrate one
 combined filter/project fragment, while tests also retain default/multi-partition
 plans. The adapter does not silently change the caller's partition settings.
 Global aggregates, sort, limit, functions and unsupported types retain their
-DataFusion operators; a compatible independent child region may still accelerate.
+DataFusion operators. Discovery continues recursively below a region's input,
+so both sides of a CPU or exchange boundary can contain independent CubeExecs.
+Adjacent CubeExecs separated by an intermediate computation still have an Arrow
+boundary; F4 does not inline that computation into a later filter.
 
 Each input batch uploads referenced numeric columns once, executes the M2
 pipeline with device selection/counts, then completes and exports host Arrow.
@@ -37,9 +45,14 @@ rebuilds the original region's properties before retranslation. The final
 `SanityCheckPlan` checks distribution/ordering after the custom rule. Statistics
 default to unknown rather than advertising unsupported precision.
 
-`EXPLAIN` identifies CubeExec, presence of a filter, output count, semantic
-profile and the one-request admission limit. Basic input/output row metrics are
-available. Full placement reasons and transfer/timing metrics are F7 work.
+`EXPLAIN` identifies CubeExec, filter count, physical node count, output count,
+lower-boundary reason, semantic profile and the one-request admission limit.
+`inspect_fragment(plan)` returns the same normalized expressions/programs and
+field positions without device work, or a structured rejection when the root
+cannot be placed. This also explains fully rejected roots (for example a
+33-column projection), which remain ordinary CPU nodes in EXPLAIN. Basic
+input/output row metrics are available. Whole-query placement reports and full
+transfer/timing metrics are F7 work.
 One logical export may involve multiple buffer/count/error readbacks; inspect
 the executor's actual counters rather than assuming one read per fragment.
 
@@ -85,3 +98,24 @@ SQL-only tests without a CubeCL runtime passed. No-feature all-target check,
 all-feature/all-target Clippy and rustdoc with warnings denied passed. The debug
 macOS linker reports a large unwind-table warning; linking and execution succeed.
 No end-to-end SQL speedup is claimed; workload placement measurements remain F8.
+
+F4 adds controlled physical fixtures for multiple filters, rename/reorder and
+FilterExec projection maps, device→CPU→device execution, exchange/fetch limits,
+shape splitting, empty/NULL/sliced batches and checked error order. Actual SQL
+tests accompany these fixtures because DataFusion may simplify an equivalent
+SQL subquery chain before physical placement.
+
+F4 verification on 2026-11-12 passed 141 all-feature tests on actual CPU/native
+Metal, 53 SQL-only tests, the no-feature all-target check, strict Clippy/rustdoc,
+formatting and diff checks. Cancellation covers both a single region and two
+regions separated by an exchange; canceled plans are reset with DataFusion's
+`reset_plan_states` before re-execution. The walkthrough ran on both backends;
+the native Metal run also exported full IR/MSL compilation records.
+
+The `datafusion_walkthrough` example prints logical/default physical/rewritten
+plans, normalized KernelPrograms, base ABI layouts, results and warm define
+counts. On Metal, an optional fresh output directory exports an isolated CubeCL
+environment with full compilation records; include the upstream
+`cubecl/persistence` feature for that export. The pinned CPU backend writes the
+textual traces and a records-unavailable notice instead. Default product features
+and dependency sources remain intact.

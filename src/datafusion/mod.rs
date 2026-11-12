@@ -5,8 +5,10 @@
 
 mod capability;
 mod exec;
+mod fragment;
 pub use capability::{TranslatedExpression, Unsupported, translate_expression};
 pub use exec::CubeExec;
+pub use fragment::{FragmentInspection, inspect_fragment};
 
 use std::sync::Arc;
 

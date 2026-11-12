@@ -5,22 +5,16 @@ use ::datafusion::{
         tree_node::{Transformed, TreeNode, TreeNodeRecursion},
     },
     execution::TaskContext,
-    physical_expr::{PhysicalExpr, expressions::Column},
+    physical_expr::PhysicalExpr,
     physical_plan::{
-        ChildrenPropertiesMode, DisplayAs, DisplayFormatType, ExecutionPlan,
-        ExecutionPlanProperties, PlanProperties, ReplaceChildrenOptions, SendableRecordBatchStream,
-        execution_plan::Boundedness,
-        filter::FilterExec,
+        ChildrenPropertiesMode, DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties,
+        ReplaceChildrenOptions, SendableRecordBatchStream,
         metrics::{ExecutionPlanMetricsSet, MetricBuilder, MetricsSet},
-        projection::ProjectionExec,
         stream::RecordBatchStreamAdapter,
     },
 };
-use arrow_array::{RecordBatch, RecordBatchOptions};
-use arrow_schema::{Schema as ArrowSchema, SchemaRef};
 use futures::TryStreamExt;
 use std::{
-    collections::BTreeSet,
     fmt,
     sync::{
         Arc,
@@ -29,11 +23,11 @@ use std::{
 };
 use tokio::sync::Semaphore;
 
-use super::{Unsupported, capability::translate_named};
-use crate::{
-    Executor, Expr, ExprId, ExprNode, Field, KernelProgram, Parameters, Pipeline, Schema,
-    arrow::ArrowBatch, prepare,
+use super::{
+    Unsupported,
+    fragment::{Fragment, Region},
 };
+use crate::Executor;
 
 /// An adapter instance serializes its device requests across partitions/queries.
 /// The permit belongs to the blocking worker through completion, even after drop.
@@ -57,191 +51,33 @@ impl fmt::Debug for Engine {
             .finish()
     }
 }
-fn execution(error: impl fmt::Display) -> DataFusionError {
+pub(crate) fn execution(error: impl fmt::Display) -> DataFusionError {
     DataFusionError::Execution(format!("Cuberel: {error}"))
 }
-fn reject(code: &'static str, detail: impl Into<String>) -> Unsupported {
-    Unsupported {
-        code,
-        detail: detail.into(),
-    }
-}
-
-#[derive(Clone, Debug)]
-struct Fragment {
-    pipeline: Pipeline,
-    parameters: Parameters,
-    input_columns: Vec<usize>,
-    input_program: KernelProgram,
-    input_schema: SchemaRef,
-    output_schema: SchemaRef,
-}
-impl Fragment {
-    fn compile(
-        region: &Arc<dyn ExecutionPlan>,
-    ) -> std::result::Result<(Self, Arc<dyn ExecutionPlan>, bool), Unsupported> {
-        let (projection, mut input) = if let Some(p) = region.downcast_ref::<ProjectionExec>() {
-            (Some(p), p.input().clone())
-        } else {
-            (None, region.clone())
-        };
-        let filter = input.downcast_ref::<FilterExec>();
-        if projection.is_none() && filter.is_none() {
-            return Err(reject("unsupported_plan", region.name()));
-        }
-        if let Some(filter) = filter {
-            if filter.fetch().is_some() {
-                return Err(reject("unsupported_plan", "filter fetch is a CPU boundary"));
-            }
-            if projection.is_some() && filter.projection().is_some() {
-                return Err(reject(
-                    "unsupported_plan",
-                    "projected filter requires field remapping",
-                ));
-            }
-        }
-        let predicate = filter.map(|f| f.predicate().clone());
-        let output_indices = filter.and_then(|f| f.projection().clone());
-        if let Some(filter) = filter {
-            input = filter.input().clone();
-        }
-        if input.boundedness() != Boundedness::Bounded {
-            return Err(reject("unbounded_input", "finite input required"));
-        }
-        let outputs: Vec<Arc<dyn PhysicalExpr>> = if let Some(projection) = projection {
-            projection.expr().iter().map(|e| e.expr.clone()).collect()
-        } else {
-            let indices: Vec<_> = output_indices
-                .map(|p| p.as_ref().to_vec())
-                .unwrap_or_else(|| (0..input.schema().fields().len()).collect());
-            indices
-                .into_iter()
-                .map(|i| {
-                    Arc::new(Column::new(input.schema().field(i).name(), i))
-                        as Arc<dyn PhysicalExpr>
-                })
-                .collect()
-        };
-        if outputs.is_empty() || outputs.len() > 32 {
-            return Err(reject(
-                "expression_limit",
-                "one to 32 projected columns required",
-            ));
-        }
-        let mut pipeline = Pipeline::new();
-        let mut parameters = Parameters::new();
-        let mut columns = BTreeSet::new();
-        let mut first_program = None;
-        for (i, expr) in predicate.iter().chain(outputs.iter()).enumerate() {
-            let t = translate_named(expr, input.schema().as_ref(), &format!("e{i}"))?;
-            for (name, value) in t.literal_bindings() {
-                parameters = parameters
-                    .with(name, *value)
-                    .map_err(|e| reject("binding", e.to_string()))?;
-            }
-            columns.extend(t.input_columns);
-            first_program.get_or_insert_with(|| t.program.clone());
-            if predicate.is_some() && i == 0 {
-                pipeline = pipeline.filter(t.program);
-            } else {
-                pipeline = pipeline.project(format!("out{i}"), t.program);
-            }
-        }
-        let input_columns: Vec<_> = columns.into_iter().collect();
-        let mut fields = Vec::new();
-        let mut own_fields = Vec::new();
-        let mut nodes = Vec::new();
-        for &index in &input_columns {
-            let field = input
-                .schema()
-                .field(index)
-                .clone()
-                .with_name(format!("c{index}"));
-            let ty = match field.data_type() {
-                arrow_schema::DataType::Int32 => crate::DataType::I32,
-                arrow_schema::DataType::Float32 => crate::DataType::F32,
-                _ => return Err(reject("unsupported_type", "only numeric fragment inputs")),
-            };
-            own_fields.push(Field::new(field.name(), ty).with_nullable(field.is_nullable()));
-            nodes.push(ExprNode::Column(field.name().clone()));
-            fields.push(field);
-        }
-        let input_program = if nodes.is_empty() {
-            first_program.expect("nonempty output")
-        } else {
-            prepare(
-                &Expr::from_nodes(nodes, ExprId::new(0)),
-                &Schema::from_fields(&own_fields, &[])
-                    .map_err(|e| reject("binding", e.to_string()))?,
-            )
-            .map_err(|e| reject("binding", e.to_string()))?
-        };
-        Ok((
-            Self {
-                pipeline,
-                parameters,
-                input_columns,
-                input_program,
-                input_schema: Arc::new(ArrowSchema::new(fields)),
-                output_schema: region.schema(),
-            },
-            input,
-            predicate.is_some(),
-        ))
-    }
-    fn run(&self, executor: &Executor, input: &RecordBatch) -> Result<RecordBatch> {
-        let columns = self
-            .input_columns
-            .iter()
-            .map(|&i| input.column(i).clone())
-            .collect();
-        let renamed = RecordBatch::try_new_with_options(
-            self.input_schema.clone(),
-            columns,
-            &RecordBatchOptions::new().with_row_count(Some(input.num_rows())),
-        )
-        .map_err(execution)?;
-        let adapter = ArrowBatch::try_new(&self.input_program, &renamed).map_err(execution)?;
-        let host = adapter.as_batch().map_err(execution)?;
-        let result = executor
-            .execute_pipeline_host(&self.pipeline, &host, &self.parameters)
-            .map_err(execution)?;
-        let materialized = result
-            .materialize_arrow()
-            .map_err(execution)?
-            .projections
-            .ok_or_else(|| execution("missing projection"))?;
-        RecordBatch::try_new(self.output_schema.clone(), materialized.columns().to_vec())
-            .map_err(execution)
-    }
-}
-
 /// A bounded SQL filter/project fragment on one explicitly selected executor.
 /// Its output schema/properties come from the equivalent DataFusion region.
 #[derive(Debug)]
 pub struct CubeExec {
     input: Arc<dyn ExecutionPlan>,
-    region: Arc<dyn ExecutionPlan>,
+    region: Region,
     fragment: Arc<Fragment>,
     engine: Arc<Engine>,
     properties: Arc<PlanProperties>,
     metrics: ExecutionPlanMetricsSet,
-    has_filter: bool,
 }
 impl CubeExec {
     fn try_new(
         region: Arc<dyn ExecutionPlan>,
         engine: Arc<Engine>,
     ) -> std::result::Result<Self, Unsupported> {
-        let (fragment, input, has_filter) = Fragment::compile(&region)?;
+        let (region, fragment) = Region::discover(region)?;
         Ok(Self {
-            input,
-            properties: region.properties().clone(),
+            input: region.input.clone(),
+            properties: region.root().properties().clone(),
             region,
             fragment: Arc::new(fragment),
             engine,
             metrics: ExecutionPlanMetricsSet::new(),
-            has_filter,
         })
     }
 }
@@ -249,9 +85,12 @@ impl DisplayAs for CubeExec {
     fn fmt_as(&self, _kind: DisplayFormatType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "CubeExec: filter={}, outputs={}, semantic_profile=df55-i32-v1, max_in_flight=1",
-            self.has_filter,
-            self.schema().fields().len()
+            "CubeExec: filter={}, filters={}, outputs={}, nodes={}, boundary=[{}], semantic_profile=df55-i32-v1, max_in_flight=1",
+            self.fragment.filter_count != 0,
+            self.fragment.filter_count,
+            self.schema().fields().len(),
+            self.region.nodes.len(),
+            self.region.boundary
         )
     }
 }
@@ -272,16 +111,12 @@ impl ExecutionPlan for CubeExec {
         &self,
         f: &mut dyn FnMut(&Arc<dyn PhysicalExpr>) -> Result<TreeNodeRecursion>,
     ) -> Result<TreeNodeRecursion> {
-        let result = self.region.apply_expressions(f)?;
-        if result == TreeNodeRecursion::Stop {
-            return Ok(result);
+        for root in &self.fragment.roots {
+            if f(root)? == TreeNodeRecursion::Stop {
+                return Ok(TreeNodeRecursion::Stop);
+            }
         }
-        if self.has_filter
-            && let Some(projection) = self.region.downcast_ref::<ProjectionExec>()
-        {
-            return projection.input().apply_expressions(f);
-        }
-        Ok(result)
+        Ok(TreeNodeRecursion::Continue)
     }
     fn with_new_children(
         self: Arc<Self>,
@@ -304,23 +139,7 @@ impl ExecutionPlan for CubeExec {
         if input.schema() != self.input.schema() {
             return Err(execution("replacement child schema changed"));
         }
-        let options = ReplaceChildrenOptions::new(ChildrenPropertiesMode::Recompute);
-        let region = if let Some(projection) = self.region.downcast_ref::<ProjectionExec>() {
-            let child = if self.has_filter {
-                projection
-                    .input()
-                    .clone()
-                    .replace_children(vec![input], options)?
-            } else {
-                input
-            };
-            self.region.clone().replace_children(
-                vec![child],
-                ReplaceChildrenOptions::new(ChildrenPropertiesMode::Recompute),
-            )?
-        } else {
-            self.region.clone().replace_children(vec![input], options)?
-        };
+        let region = self.region.rebuild(input)?;
         Ok(Arc::new(
             Self::try_new(region, self.engine.clone()).map_err(execution)?,
         ))
@@ -412,7 +231,14 @@ pub(crate) fn rewrite(
         return Ok(plan);
     }
     if let Ok(exec) = CubeExec::try_new(plan.clone(), engine.clone()) {
-        return Ok(Arc::new(exec));
+        let input = rewrite(exec.input.clone(), engine)?;
+        if Arc::ptr_eq(&input, &exec.input) {
+            return Ok(Arc::new(exec));
+        }
+        let root = exec.region.rebuild(input)?;
+        let mut rebuilt = CubeExec::try_new(root, engine.clone()).map_err(execution)?;
+        rebuilt.region.boundary = exec.region.boundary;
+        return Ok(Arc::new(rebuilt));
     }
     Ok(plan
         .map_children(|child| rewrite(child, engine).map(Transformed::yes))?
@@ -423,7 +249,10 @@ pub(crate) fn rewrite(
 mod tests {
     use super::{Engine, rewrite};
     use crate::Executor;
-    use ::datafusion::{physical_plan::collect, prelude::SessionContext};
+    use ::datafusion::{
+        physical_plan::{collect, execution_plan::reset_plan_states},
+        prelude::{SessionConfig, SessionContext},
+    };
     use arrow_array::{Int32Array, RecordBatch};
     use arrow_schema::{DataType, Field, Schema};
     use futures::TryStreamExt;
@@ -431,10 +260,12 @@ mod tests {
 
     async fn cancellation(executor: Executor) {
         let engine = Arc::new(Engine::new(executor.clone()));
-        let ctx = SessionContext::new();
+        // Keep this admission/worker test independent of DataFusion's optional
+        // repartition producers; exchange cancellation is tested separately.
+        let ctx = SessionContext::new_with_config(SessionConfig::new().with_target_partitions(1));
         let batch = RecordBatch::try_new(
             Arc::new(Schema::new(vec![Field::new("x", DataType::Int32, false)])),
-            vec![Arc::new(Int32Array::from((0..8192).collect::<Vec<i32>>()))],
+            vec![Arc::new(Int32Array::from((0..129).collect::<Vec<i32>>()))],
         )
         .unwrap();
         ctx.register_batch("t", batch).unwrap();
@@ -463,7 +294,7 @@ mod tests {
             "cancelled waiter cannot upload later"
         );
 
-        let query = plan.clone();
+        let query = reset_plan_states(plan.clone()).unwrap();
         let task_ctx = ctx.task_ctx();
         let task = tokio::spawn(async move { collect(query, task_ctx).await });
         tokio::time::timeout(Duration::from_secs(30), async {
@@ -488,7 +319,9 @@ mod tests {
                 .unwrap();
         drop(permit);
         assert!(
-            collect(plan, ctx.task_ctx()).await.is_ok(),
+            collect(reset_plan_states(plan).unwrap(), ctx.task_ctx())
+                .await
+                .is_ok(),
             "device reusable after cancellation"
         );
     }
@@ -502,6 +335,112 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn metal_cancel_waiting_and_submitted_work() {
         cancellation(
+            Executor::with_cube_size(
+                cubecl::Device::metal(Default::default()).unwrap().client(),
+                64,
+            )
+            .unwrap(),
+        )
+        .await;
+    }
+
+    async fn exchange_cancellation(executor: Executor) {
+        use ::datafusion::{
+            common::ScalarValue,
+            logical_expr::Operator,
+            physical_expr::{
+                PhysicalExpr,
+                expressions::{BinaryExpr, Column, Literal},
+            },
+            physical_plan::{
+                ExecutionPlan, Partitioning, displayable, filter::FilterExec,
+                projection::ProjectionExec, repartition::RepartitionExec,
+            },
+        };
+        let engine = Arc::new(Engine::new(executor.clone()));
+        let ctx = SessionContext::new_with_config(SessionConfig::new().with_target_partitions(1));
+        let batch = RecordBatch::try_new(
+            Arc::new(Schema::new(vec![Field::new("x", DataType::Int32, false)])),
+            vec![Arc::new(Int32Array::from((0..129).collect::<Vec<i32>>()))],
+        )
+        .unwrap();
+        ctx.register_batch("t", batch).unwrap();
+        let source = ctx
+            .table("t")
+            .await
+            .unwrap()
+            .create_physical_plan()
+            .await
+            .unwrap();
+        let column: Arc<dyn PhysicalExpr> = Arc::new(Column::new("x", 0));
+        let predicate = Arc::new(BinaryExpr::new(
+            column.clone(),
+            Operator::Gt,
+            Arc::new(Literal::new(ScalarValue::Int32(Some(3)))),
+        ));
+        let lower: Arc<dyn ExecutionPlan> =
+            Arc::new(FilterExec::try_new(predicate, source).unwrap());
+        let exchange: Arc<dyn ExecutionPlan> =
+            Arc::new(RepartitionExec::try_new(lower, Partitioning::RoundRobinBatch(2)).unwrap());
+        let original: Arc<dyn ExecutionPlan> =
+            Arc::new(ProjectionExec::try_new(vec![(column, "y".to_string())], exchange).unwrap());
+        let plan = rewrite(original, &engine).unwrap();
+        assert_eq!(
+            displayable(plan.as_ref())
+                .indent(true)
+                .to_string()
+                .matches("CubeExec:")
+                .count(),
+            2
+        );
+        let held = engine.gate.clone().acquire_owned().await.unwrap();
+        let before = executor.stats();
+        let query = plan.clone();
+        let task_ctx = ctx.task_ctx();
+        let mut task = tokio::spawn(async move { collect(query, task_ctx).await });
+        assert!(
+            tokio::time::timeout(Duration::from_millis(10), &mut task)
+                .await
+                .is_err()
+        );
+        task.abort();
+        let _ = task.await;
+        let fresh = reset_plan_states(plan.clone()).unwrap();
+        drop(plan);
+        drop(held);
+        let permit =
+            tokio::time::timeout(Duration::from_secs(30), engine.gate.clone().acquire_owned())
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(
+            executor.stats(),
+            before,
+            "cancelled exchange producers cannot submit after admission resumes"
+        );
+        drop(permit);
+        let output = tokio::time::timeout(Duration::from_secs(30), collect(fresh, ctx.task_ctx()))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(output.iter().map(RecordBatch::num_rows).sum::<usize>(), 125);
+        assert_eq!(
+            executor.stats().upload_bytes - before.upload_bytes,
+            (129 + 125) * 8
+        );
+    }
+    #[cfg(feature = "cpu")]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cpu_cancel_exchange_between_fragments() {
+        exchange_cancellation(
+            Executor::with_cube_size(cubecl::Device::cpu().unwrap().client(), 8).unwrap(),
+        )
+        .await;
+    }
+    #[cfg(feature = "metal")]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn metal_cancel_exchange_between_fragments() {
+        exchange_cancellation(
             Executor::with_cube_size(
                 cubecl::Device::metal(Default::default()).unwrap().client(),
                 64,

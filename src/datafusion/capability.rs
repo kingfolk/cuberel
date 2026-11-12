@@ -57,6 +57,10 @@ pub fn translate_expression(
     expr: &Arc<dyn PhysicalExpr>,
     schema: &ArrowSchema,
 ) -> Result<TranslatedExpression, Unsupported> {
+    translate_named(expr, schema, "expr")
+}
+
+pub(crate) fn check_expression_limits(expr: &Arc<dyn PhysicalExpr>) -> Result<(), Unsupported> {
     // Bound traversal before invoking recursive DataFusion type/nullability APIs.
     let mut pending = vec![(expr, 0)];
     let mut nodes = 0;
@@ -67,7 +71,7 @@ pub fn translate_expression(
         }
         pending.extend(node.children().into_iter().map(|child| (child, depth + 1)));
     }
-    translate_named(expr, schema, "expr")
+    Ok(())
 }
 
 pub(crate) fn translate_named(
@@ -75,6 +79,7 @@ pub(crate) fn translate_named(
     schema: &ArrowSchema,
     namespace: &str,
 ) -> Result<TranslatedExpression, Unsupported> {
+    check_expression_limits(expr)?;
     let mut translator = Translator {
         schema,
         namespace,
