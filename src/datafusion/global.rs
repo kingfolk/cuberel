@@ -1,7 +1,7 @@
 //! Bounded integer global aggregates. Merge completed scalar states, never rows.
 use super::{
     CubeExec, Unsupported,
-    capability::translate_named,
+    capability::{check_expression_limits, translate_named},
     exec::{CancelOnDrop, Engine, execution},
     fragment::{reject, remap},
 };
@@ -16,10 +16,11 @@ use ::datafusion::{
     functions_aggregate::{
         count::Count,
         min_max::{Max, Min},
+        sum::Sum,
     },
     physical_expr::{
         PhysicalExpr,
-        expressions::{Column, Literal},
+        expressions::{CastExpr, Column, Literal},
     },
     physical_plan::{
         ChildrenPropertiesMode, DisplayAs, DisplayFormatType, Distribution, ExecutionPlan,
@@ -67,6 +68,7 @@ enum Kind {
     Count,
     Min,
     Max,
+    Sum,
 }
 
 /// A proof from an immutable memory-source snapshot, not estimated statistics.
@@ -266,6 +268,16 @@ impl GlobalPlan {
                 Kind::Min
             } else if udf.is::<Max>() {
                 Kind::Max
+            } else if udf.is::<Sum>() {
+                // N <= 2^32-1 and |I32| <= 2^31 prove every prefix/tree
+                // sum fits I64, including worst-case all-negative input.
+                if bound > u64::from(u32::MAX) {
+                    return Err(reject(
+                        "aggregate_range",
+                        "I32 SUM needs total row bound <= 2^32-1",
+                    ));
+                }
+                Kind::Sum
             } else {
                 return Err(reject("unsupported_aggregate", a.fun().name()));
             };
@@ -273,9 +285,10 @@ impl GlobalPlan {
             if args.len() != 1 {
                 return Err(reject("unsupported_aggregate", "one argument required"));
             }
+            check_expression_limits(&args[0])?;
             let field = root.schema().field(i).clone();
             let expected = match kind {
-                Kind::Count => ArrowType::Int64,
+                Kind::Count | Kind::Sum => ArrowType::Int64,
                 _ => ArrowType::Int32,
             };
             if field.data_type() != &expected
@@ -304,7 +317,27 @@ impl GlobalPlan {
                 {
                     Arc::new(Literal::new(ScalarValue::Int32(None)))
                 } else {
-                    remap(&args[0], &positions, &argument_schema, &source)?
+                    // DF coerces SUM(Int32) to SUM(CAST(Int32 AS Int64)).
+                    // Only this exact, lossless widening is handled here;
+                    // general SQL Int64/cast support is still unavailable.
+                    let arg = if matches!(kind, Kind::Sum) {
+                        match args[0].downcast_ref::<CastExpr>() {
+                            Some(cast)
+                                if cast.cast_type() == &ArrowType::Int64
+                                    && cast
+                                        .expr()
+                                        .data_type(&argument_schema)
+                                        .map_err(|e| reject("binding", e.to_string()))?
+                                        == ArrowType::Int32 =>
+                            {
+                                cast.expr()
+                            }
+                            _ => &args[0],
+                        }
+                    } else {
+                        &args[0]
+                    };
+                    remap(arg, &positions, &argument_schema, &source)?
                 };
                 if arg
                     .data_type(&source)
@@ -322,6 +355,7 @@ impl GlobalPlan {
                     Kind::Count => Aggregate::Count(program),
                     Kind::Min => Aggregate::Min(program),
                     Kind::Max => Aggregate::Max(program),
+                    Kind::Sum => Aggregate::Sum(program),
                 }
             };
             kinds.push(kind);
@@ -427,6 +461,7 @@ impl GlobalPlan {
                         Arc::new(Int64Array::from(vec![i64::try_from(n).map_err(execution)?]))
                     }
                     AggregateValue::I32(n) => Arc::new(Int32Array::from(vec![n])),
+                    AggregateValue::I64(n) => Arc::new(Int64Array::from(vec![n])),
                     _ => return Err(execution("unexpected aggregate state")),
                 })
             })
@@ -455,6 +490,16 @@ fn merge(kinds: &[Kind], states: &mut [AggregateValue], batch: Vec<AggregateValu
             (Kind::Max, AggregateValue::I32(n), AggregateValue::I32(v)) => {
                 if let Some(v) = v {
                     *n = Some(n.map_or(v, |n| n.max(v)));
+                }
+            }
+            (Kind::Sum, AggregateValue::I64(n), AggregateValue::I64(v)) => {
+                if let Some(v) = v {
+                    *n = Some(match *n {
+                        Some(n) => n
+                            .checked_add(v)
+                            .ok_or_else(|| execution("SUM Int64 state overflow"))?,
+                        None => v,
+                    });
                 }
             }
             _ => return Err(execution("aggregate state type")),
@@ -566,6 +611,7 @@ impl ExecutionPlan for CubeAggregateExec {
                 .iter()
                 .map(|k| match k {
                     Kind::Count => AggregateValue::Count(0),
+                    Kind::Sum => AggregateValue::I64(None),
                     _ => AggregateValue::I32(None),
                 })
                 .collect::<Vec<_>>();
@@ -619,6 +665,35 @@ mod tests {
     fn sql_count_merge_checks_int64_range() {
         let mut states = vec![AggregateValue::Count(i64::MAX as u64)];
         assert!(merge(&[Kind::Count], &mut states, vec![AggregateValue::Count(1)]).is_err());
+    }
+    #[test]
+    fn sum_merge_preserves_null_and_checks_int64_range() {
+        let mut states = vec![AggregateValue::I64(None)];
+        merge(&[Kind::Sum], &mut states, vec![AggregateValue::I64(None)]).unwrap();
+        assert_eq!(states, [AggregateValue::I64(None)]);
+        merge(
+            &[Kind::Sum],
+            &mut states,
+            vec![AggregateValue::I64(Some(i64::MAX))],
+        )
+        .unwrap();
+        assert!(
+            merge(
+                &[Kind::Sum],
+                &mut states,
+                vec![AggregateValue::I64(Some(1))]
+            )
+            .is_err()
+        );
+        let mut states = vec![AggregateValue::I64(Some(i64::MIN))];
+        assert!(
+            merge(
+                &[Kind::Sum],
+                &mut states,
+                vec![AggregateValue::I64(Some(-1))]
+            )
+            .is_err()
+        );
     }
 
     #[cfg(any(feature = "cpu", feature = "metal"))]

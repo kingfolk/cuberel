@@ -91,6 +91,91 @@ async fn global_placement_contract_without_runtime() {
     }
 }
 
+#[tokio::test]
+#[cfg(target_pointer_width = "64")]
+async fn sum_requires_proven_total_i32_range_without_allocating_rows() {
+    use datafusion::{
+        common::ScalarValue,
+        datasource::memory::MemorySourceConfig,
+        physical_expr::{
+            PhysicalExpr,
+            aggregate::AggregateExprBuilder,
+            expressions::{CastExpr, Column, Literal},
+        },
+        physical_plan::{
+            aggregates::{AggregateMode, PhysicalGroupBy},
+            projection::ProjectionExec,
+        },
+    };
+    // Zero-column batches represent row counts without allocating billions of
+    // payload values. The computed projection is planned but never executed.
+    for rows in [u32::MAX as usize, u32::MAX as usize + 1] {
+        let empty_schema = Arc::new(Schema::empty());
+        let b = RecordBatch::try_new_with_options(
+            empty_schema.clone(),
+            vec![],
+            &arrow_array::RecordBatchOptions::new().with_row_count(Some(rows)),
+        )
+        .unwrap();
+        let source = MemorySourceConfig::try_new_exec(&[vec![b]], empty_schema, None).unwrap();
+        let input: Arc<dyn ExecutionPlan> = Arc::new(
+            ProjectionExec::try_new(
+                vec![(
+                    Arc::new(Literal::new(ScalarValue::Int32(Some(1)))) as Arc<dyn PhysicalExpr>,
+                    "x".to_string(),
+                )],
+                source,
+            )
+            .unwrap(),
+        );
+        let arg = Arc::new(CastExpr::new(
+            Arc::new(Column::new("x", 0)),
+            DataType::Int64,
+            None,
+        ));
+        let sum =
+            AggregateExprBuilder::new(datafusion::functions_aggregate::sum::sum_udaf(), vec![arg])
+                .schema(input.schema())
+                .alias("total")
+                .build()
+                .unwrap();
+        let agg = Arc::new(
+            AggregateExec::try_new(
+                AggregateMode::Single,
+                PhysicalGroupBy::new_single(vec![]),
+                vec![Arc::new(sum)],
+                vec![None],
+                input.clone(),
+                input.schema(),
+            )
+            .unwrap(),
+        );
+        let unknown = AggregateExec::try_new(
+            AggregateMode::Single,
+            agg.group_expr().clone(),
+            agg.aggr_expr().to_vec(),
+            agg.filter_expr().to_vec(),
+            Arc::new(datafusion::physical_plan::empty::EmptyExec::new(
+                input.schema(),
+            )),
+            input.schema(),
+        )
+        .unwrap();
+        assert_eq!(
+            inspect_global_aggregate(Arc::new(unknown))
+                .unwrap_err()
+                .code,
+            "unknown_aggregate_bound"
+        );
+        let result = inspect_global_aggregate(agg);
+        if rows == u32::MAX as usize {
+            assert_eq!(result.unwrap().input_upper_bound, rows as u64);
+        } else {
+            assert_eq!(result.unwrap_err().code, "aggregate_range");
+        }
+    }
+}
+
 #[cfg(any(feature = "cpu", feature = "metal"))]
 mod runtime {
     use super::{aggregate, batch, plan};
@@ -360,6 +445,176 @@ mod runtime {
             ),
             ["0", "129"]
         );
+    }
+    async fn sums(executor: Executor) {
+        let sql = "SELECT sum(x) AS total,count(*) AS n,min(x) AS lo FROM t";
+        for partitions in [1, 2] {
+            for input in [
+                vec![Some(i32::MAX), Some(i32::MAX)],
+                vec![Some(i32::MIN), Some(i32::MIN)],
+                vec![Some(i32::MAX), None, Some(3), Some(i32::MIN), Some(-2)],
+                vec![None, None],
+                vec![],
+            ] {
+                let b = batch(input);
+                let split = b.num_rows() / 2;
+                let parts = vec![
+                    vec![b.slice(0, split), b.slice(0, 0)],
+                    vec![b.slice(split, b.num_rows() - split)],
+                ];
+                for suffix in [
+                    "",
+                    " WHERE x > CAST(0 AS INT)",
+                    " WHERE x > CAST(2147483647 AS INT)",
+                ] {
+                    let (ctx, p) = plan(parts.clone(), &format!("{sql}{suffix}"), partitions).await;
+                    let device = rewrite(p.clone(), &executor);
+                    assert_eq!(
+                        count(&device),
+                        usize::from(has_aggregate(&p)),
+                        "{}",
+                        displayable(p.as_ref()).indent(true)
+                    );
+                    let expected = collect(p, ctx.task_ctx()).await.unwrap();
+                    let actual = collect(device, ctx.task_ctx()).await.unwrap();
+                    assert_eq!(actual[0].schema(), expected[0].schema());
+                    assert_eq!(values(&actual), values(&expected));
+                }
+            }
+        }
+        // Exercise SUM's own empty-stream/all-NULL completion, even when SQL's
+        // optimizer would otherwise replace the aggregate with constants.
+        let (ctx, template) = plan(vec![vec![batch(vec![Some(1)])]], sql, 1).await;
+        let template = aggregate(&template);
+        let a = template
+            .downcast_ref::<datafusion::physical_plan::aggregates::AggregateExec>()
+            .unwrap();
+        for batches in [vec![], vec![batch(vec![])], vec![batch(vec![None, None])]] {
+            let input = datafusion::datasource::memory::MemorySourceConfig::try_new_exec(
+                &[batches],
+                batch(vec![]).schema(),
+                None,
+            )
+            .unwrap();
+            let p: Arc<dyn ExecutionPlan> = Arc::new(
+                datafusion::physical_plan::aggregates::AggregateExec::try_new(
+                    datafusion::physical_plan::aggregates::AggregateMode::Single,
+                    a.group_expr().clone(),
+                    a.aggr_expr().to_vec(),
+                    a.filter_expr().to_vec(),
+                    input.clone(),
+                    input.schema(),
+                )
+                .unwrap(),
+            );
+            let device = rewrite(p.clone(), &executor);
+            assert_eq!(count(&device), 1);
+            let expected = collect(p, ctx.task_ctx()).await.unwrap();
+            let actual = collect(device, ctx.task_ctx()).await.unwrap();
+            assert_eq!(actual[0].schema(), expected[0].schema());
+            assert_eq!(values(&actual), values(&expected));
+        }
+        // The original wrapping-I32 argument remains CPU; widening the SUM
+        // accumulator cannot change the argument's overflow/evaluation contract.
+        for sql in [
+            "SELECT sum(x * CAST(2 AS INT)),min(x) FROM t",
+            "SELECT sum(CAST(x AS FLOAT)),min(x) FROM t",
+        ] {
+            let (ctx, p) = plan(vec![vec![batch(vec![Some(i32::MAX), Some(3)])]], sql, 1).await;
+            let device = rewrite(p.clone(), &executor);
+            assert_eq!(count(&device), 0);
+            assert_eq!(
+                values(&collect(device, ctx.task_ctx()).await.unwrap()),
+                values(&collect(p, ctx.task_ctx()).await.unwrap())
+            );
+        }
+        // Explicit checked argument inside the widening cast must fail before
+        // any SQL row is published, even though SUM's I64 state would fit.
+        let (ctx, source) = plan(
+            vec![vec![batch(vec![Some(1)]), batch(vec![Some(i32::MAX)])]],
+            "SELECT * FROM t",
+            1,
+        )
+        .await;
+        let checked = Arc::new(
+            datafusion::physical_expr::expressions::BinaryExpr::new(
+                Arc::new(datafusion::physical_expr::expressions::Column::new("x", 0)),
+                datafusion::logical_expr::Operator::Plus,
+                Arc::new(datafusion::physical_expr::expressions::Literal::new(
+                    datafusion::common::ScalarValue::Int32(Some(1)),
+                )),
+            )
+            .with_fail_on_overflow(true),
+        );
+        let widened = Arc::new(datafusion::physical_expr::expressions::CastExpr::new(
+            checked,
+            arrow_schema::DataType::Int64,
+            None,
+        ));
+        let sum = datafusion::physical_expr::aggregate::AggregateExprBuilder::new(
+            datafusion::functions_aggregate::sum::sum_udaf(),
+            vec![widened],
+        )
+        .schema(source.schema())
+        .alias("checked_sum")
+        .build()
+        .unwrap();
+        let p: Arc<dyn ExecutionPlan> = Arc::new(
+            datafusion::physical_plan::aggregates::AggregateExec::try_new(
+                datafusion::physical_plan::aggregates::AggregateMode::Single,
+                datafusion::physical_plan::aggregates::PhysicalGroupBy::new_single(vec![]),
+                vec![Arc::new(sum)],
+                vec![None],
+                source.clone(),
+                source.schema(),
+            )
+            .unwrap(),
+        );
+        let device = rewrite(p.clone(), &executor);
+        assert_eq!(count(&device), 1);
+        assert!(collect(p, ctx.task_ctx()).await.is_err());
+        let mut stream = device.execute(0, ctx.task_ctx()).unwrap();
+        assert!(
+            stream
+                .try_next()
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("overflow")
+        );
+        assert!(stream.try_next().await.unwrap().is_none());
+        // No states from the failed query survive into a valid execution.
+        let (ctx, p) = plan(
+            vec![vec![batch(vec![Some(i32::MAX), Some(i32::MAX)])]],
+            sql,
+            1,
+        )
+        .await;
+        assert_eq!(
+            values(
+                &collect(rewrite(p, &executor), ctx.task_ctx())
+                    .await
+                    .unwrap()
+            ),
+            ["4294967294", "2", "2147483647"]
+        );
+    }
+    #[cfg(feature = "cpu")]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cpu_global_wide_sum() {
+        sums(Executor::with_cube_size(cubecl::Device::cpu().unwrap().client(), 8).unwrap()).await;
+    }
+    #[cfg(all(feature = "metal", target_vendor = "apple"))]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn metal_global_wide_sum() {
+        sums(
+            Executor::with_cube_size(
+                cubecl::Device::metal(Default::default()).unwrap().client(),
+                64,
+            )
+            .unwrap(),
+        )
+        .await;
     }
     #[cfg(feature = "cpu")]
     #[tokio::test(flavor = "multi_thread")]
