@@ -24,6 +24,13 @@ standard optimizer rules and appends a final property check. CPU planning works
 without a CubeCL runtime. See the [registration contract](docs/datafusion-integration.md),
 [semantic allow-list](docs/sql-semantics.md) and [execution limits](docs/sql-execution.md).
 
+Supported contiguous filter/project chains share one device upload and retain
+selection state until the fragment exports Arrow. Pure rename/reorder projections
+are composed by field position; CPU computations, exchanges and fetch keep their
+evaluation boundaries. Run `cargo run --locked --all-features --example
+datafusion_walkthrough -- cpu` (or `metal`) to inspect actual plans, normalized
+programs, binding layouts, results and warm kernel reuse.
+
 ## Runtime expression execution
 
 ```rust

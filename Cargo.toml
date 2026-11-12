@@ -36,3 +36,7 @@ required-features = ["arrow"]
 [[example]]
 name = "datafusion_sql"
 required-features = ["datafusion"]
+
+[[example]]
+name = "datafusion_walkthrough"
+required-features = ["datafusion"]
