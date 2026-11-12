@@ -9,10 +9,20 @@ temporary build directories may live under `/private/tmp`.
 The library builds and validates runtime expressions, lowers nullable `f32`
 arithmetic, checked I32 arithmetic and nullable boolean predicates to CubeCL IR, and executes on a selected CPU or native
 Metal client. No `#[cube]`, Rust source generation or runtime rustc invocation is
-used by this query path. Optional Arrow host adapters are available; SQL planning
-is not yet implemented.
+used by this query path. Optional Arrow host adapters and opt-in DataFusion SQL
+registration and explicitly selected filter/project device fragments are available.
 The backend smoke example separately initializes a real device and round-trips
 a buffer; it does **not** compile or launch a compute kernel.
+
+## Optional SQL integration
+
+The `datafusion` feature pins DataFusion 55.2.0 and Arrow 59.2.0. Register the
+adapter on a default `SessionStateBuilder`. `AdapterOptions::planning_only()`
+keeps DataFusion's CPU plan; `AdapterOptions::with_executor(executor)` opts into
+supported filter/project `CubeExec` fragments. Registration preserves the
+standard optimizer rules and appends a final property check. CPU planning works
+without a CubeCL runtime. See the [registration contract](docs/datafusion-integration.md),
+[semantic allow-list](docs/sql-semantics.md) and [execution limits](docs/sql-execution.md).
 
 ## Runtime expression execution
 
@@ -135,7 +145,7 @@ cargo run --locked --no-default-features --features metal --example nullable_pre
 
 ## Arrow arrays and RecordBatch
 
-Enable `arrow` for pinned Arrow 60.0.0 host adapters. Convert a Float32/Int32 schema with
+Enable `arrow` for pinned Arrow 59.2.0 host adapters. Convert a Float32/Int32 schema with
 `cuberel::arrow::schema_from_arrow`, then call `executor.execute_arrow` on a
 RecordBatch to obtain Float32Array, Int32Array or BooleanArray output. `execute_arrow_mask`
 returns an all-valid bit-packed WHERE mask. `ArrowBatch::from_columns` also accepts

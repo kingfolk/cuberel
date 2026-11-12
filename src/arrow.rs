@@ -1,4 +1,4 @@
-//! Host Arrow 60 adapters. Input numeric values are borrowed; bitmaps expand to
+//! Host Arrow 59.2 adapters. Input numeric values are borrowed; bitmaps expand to
 //! dense U32 validity. Execution still uploads and reads back through CubeCL.
 
 use std::{collections::BTreeMap, error::Error as StdError, fmt, sync::Arc};
