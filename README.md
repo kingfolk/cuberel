@@ -23,6 +23,9 @@ supported filter/project `CubeExec` fragments. Registration preserves the
 standard optimizer rules and appends a final property check. CPU planning works
 without a CubeCL runtime. See the [registration contract](docs/datafusion-integration.md),
 [semantic allow-list](docs/sql-semantics.md) and [execution limits](docs/sql-execution.md).
+Bounded global COUNT and Int32 MIN/MAX are described in
+[SQL aggregation](docs/sql-global-aggregates.md), including cross-batch and
+partition merge contracts.
 
 Supported contiguous filter/project chains share one device upload and retain
 selection state until the fragment exports Arrow. Pure rename/reorder projections
