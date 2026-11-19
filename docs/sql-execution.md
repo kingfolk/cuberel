@@ -66,7 +66,9 @@ the executor's actual counters rather than assuming one read per fragment.
 stream pulls one child batch on demand and never prefetches while its output is
 waiting for a consumer. A semaphore shared by the adapter's queries/partitions
 permits one device request at a time. Waiting partitions may retain one host
-batch each; comprehensive host-byte reservations and fairness tuning remain F6.
+batch each, charged against the shared request/host limits described in
+[SQL lifecycle](sql-lifecycle.md). Exhausted bytes/slots fail explicitly rather
+than entering an unbounded wait queue.
 
 Blocking upload/complete/materialize run in Tokio's blocking pool. The worker
 owns the admission permit and input buffers until completion, including when
