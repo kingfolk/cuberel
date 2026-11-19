@@ -7,10 +7,12 @@ mod capability;
 mod exec;
 mod fragment;
 mod global;
+mod resources;
 pub use capability::{TranslatedExpression, Unsupported, translate_expression};
 pub use exec::CubeExec;
 pub use fragment::{FragmentInspection, inspect_fragment};
 pub use global::{CubeAggregateExec, GlobalAggregateInspection, inspect_global_aggregate};
+pub use resources::{ResourceSnapshot, SharedLimits, SharedResourceError, SharedResources};
 
 use std::sync::Arc;
 
@@ -39,9 +41,14 @@ impl AdapterOptions {
 
     /// Explicit opt-in. Clones share one in-flight device request across queries.
     pub fn with_executor(executor: crate::Executor) -> Self {
+        Self::with_resources(executor, SharedResources::default())
+    }
+
+    /// Share one admission gate and logical byte limits with other adapters.
+    pub fn with_resources(executor: crate::Executor, resources: SharedResources) -> Self {
         Self {
             enabled: true,
-            engine: Some(Arc::new(exec::Engine::new(executor))),
+            engine: Some(Arc::new(exec::Engine::with_resources(executor, resources))),
         }
     }
 }

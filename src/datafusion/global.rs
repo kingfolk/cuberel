@@ -41,10 +41,7 @@ use futures::TryStreamExt;
 use std::{
     collections::BTreeSet,
     fmt,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, atomic::AtomicBool},
 };
 
 type Placement<T> = std::result::Result<T, Unsupported>;
@@ -430,7 +427,12 @@ impl GlobalPlan {
             roots,
         })
     }
-    fn run(&self, executor: &Executor, batch: &RecordBatch) -> Result<Vec<AggregateValue>> {
+    fn run(
+        &self,
+        executor: &Executor,
+        batch: &RecordBatch,
+        lease: &mut super::resources::RequestLease,
+    ) -> Result<Vec<AggregateValue>> {
         let input = RecordBatch::try_new_with_options(
             self.input_schema.clone(),
             self.columns
@@ -442,6 +444,11 @@ impl GlobalPlan {
         .map_err(execution)?;
         let arrow = ArrowBatch::try_new(&self.input_program, &input).map_err(execution)?;
         let host = arrow.as_batch().map_err(execution)?;
+        let estimate = executor
+            .estimate_pipeline_host(&self.pipeline, &host, &self.parameters)
+            .map_err(execution)?;
+        executor.budget().check(&estimate).map_err(execution)?;
+        lease.device(estimate.device_bytes)?;
         Ok(executor
             .execute_pipeline_host(&self.pipeline, &host, &self.parameters)
             .map_err(execution)?
@@ -606,49 +613,54 @@ impl ExecutionPlan for CubeAggregateExec {
         let rows = MetricBuilder::new(&self.metrics).counter("input_rows", 0);
         let output = MetricBuilder::new(&self.metrics).counter("output_rows", 0);
         let stream = futures::stream::once(async move {
-            let mut states = plan
-                .kinds
-                .iter()
-                .map(|k| match k {
-                    Kind::Count => AggregateValue::Count(0),
-                    Kind::Sum => AggregateValue::I64(None),
-                    _ => AggregateValue::I32(None),
-                })
-                .collect::<Vec<_>>();
-            let mut seen = 0_u64;
-            let mut ordinal = 0;
-            while let Some(batch) = input.try_next().await? {
-                seen = seen
-                    .checked_add(batch.num_rows() as u64)
-                    .ok_or_else(|| execution("input count overflow"))?;
-                if seen > plan.inspection.input_upper_bound {
-                    return Err(execution("input violated proven aggregate row bound"));
-                }
-                let permit = engine
-                    .gate
-                    .clone()
-                    .acquire_owned()
-                    .await
-                    .map_err(execution)?;
-                let worker_plan = plan.clone();
-                let executor = engine.executor.clone();
-                let cancelled = cancellation.0.clone();
-                let values = tokio::task::spawn_blocking(move || {
-                    let _permit = permit;
-                    if cancelled.load(Ordering::Acquire) {
-                        return Err(execution("aggregate cancelled before submission"));
+            let mut stream_lease = engine.resources.stream(plan.kinds.len())?;
+            let result = async {
+                let mut states = plan
+                    .kinds
+                    .iter()
+                    .map(|k| match k {
+                        Kind::Count => AggregateValue::Count(0),
+                        Kind::Sum => AggregateValue::I64(None),
+                        _ => AggregateValue::I32(None),
+                    })
+                    .collect::<Vec<_>>();
+                let mut seen = 0_u64;
+                let mut ordinal = 0;
+                while let Some(batch) = input.try_next().await? {
+                    seen = seen
+                        .checked_add(batch.num_rows() as u64)
+                        .ok_or_else(|| execution("input count overflow"))?;
+                    if seen > plan.inspection.input_upper_bound {
+                        return Err(execution("input violated proven aggregate row bound"));
                     }
-                    worker_plan.run(&executor, &batch)
-                })
-                .await
-                .map_err(execution)?
-                .map_err(|e| execution(format!("partition=0 batch={ordinal}: {e}")))?;
-                merge(&plan.kinds, &mut states, values)?;
-                ordinal += 1;
+                    let scratch = super::resources::workspace(
+                        batch.num_rows(),
+                        plan.columns.len(),
+                        plan.kinds.len(),
+                    )?;
+                    let worker_plan = plan.clone();
+                    let cancelled = cancellation.0.clone();
+                    let values = engine
+                        .run(batch, scratch, cancelled, move |executor, batch, lease| {
+                            worker_plan.run(executor, batch, lease)
+                        })
+                        .await
+                        .map_err(|e| {
+                            ::datafusion::common::DataFusionError::Context(
+                                format!("Cuberel partition=0 batch={ordinal}"),
+                                Box::new(e),
+                            )
+                        })?;
+                    merge(&plan.kinds, &mut states, values)?;
+                    ordinal += 1;
+                }
+                rows.add(seen as usize);
+                output.add(1);
+                stream_lease.output(plan.output(states)?)
             }
-            rows.add(seen as usize);
-            output.add(1);
-            plan.output(states)
+            .await;
+            stream_lease.finish(result.is_err());
+            result
         });
         Ok(Box::pin(RecordBatchStreamAdapter::new(
             self.schema(),

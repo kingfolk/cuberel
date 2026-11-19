@@ -373,7 +373,18 @@ impl Fragment {
             filter_count,
         })
     }
-    pub(crate) fn run(&self, executor: &Executor, input: &RecordBatch) -> Result<RecordBatch> {
+    pub(crate) fn outputs(&self) -> usize {
+        self.output_schema.fields().len()
+    }
+    pub(crate) fn workspace(&self, rows: usize) -> Result<u64> {
+        super::resources::workspace(rows, self.input_columns.len(), self.outputs())
+    }
+    pub(crate) fn run(
+        &self,
+        executor: &Executor,
+        input: &RecordBatch,
+        lease: &mut super::resources::RequestLease,
+    ) -> Result<RecordBatch> {
         let error = |e| super::exec::execution(e);
         let columns = self
             .input_columns
@@ -389,6 +400,14 @@ impl Fragment {
         let adapter =
             ArrowBatch::try_new(&self.input_program, &renamed).map_err(super::exec::execution)?;
         let host = adapter.as_batch().map_err(super::exec::execution)?;
+        let estimate = executor
+            .estimate_pipeline_host(&self.pipeline, &host, &self.parameters)
+            .map_err(super::exec::execution)?;
+        executor
+            .budget()
+            .check(&estimate)
+            .map_err(super::exec::execution)?;
+        lease.device(estimate.device_bytes)?;
         let result = executor
             .execute_pipeline_host(&self.pipeline, &host, &self.parameters)
             .map_err(super::exec::execution)?;
@@ -397,7 +416,9 @@ impl Fragment {
             .map_err(super::exec::execution)?
             .projections
             .ok_or_else(|| super::exec::execution("missing projection"))?;
-        RecordBatch::try_new(self.output_schema.clone(), materialized.columns().to_vec())
-            .map_err(super::exec::execution)
+        let result =
+            RecordBatch::try_new(self.output_schema.clone(), materialized.columns().to_vec())
+                .map_err(super::exec::execution)?;
+        lease.output(result)
     }
 }

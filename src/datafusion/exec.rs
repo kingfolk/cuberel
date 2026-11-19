@@ -26,6 +26,7 @@ use tokio::sync::Semaphore;
 use super::{
     Unsupported,
     fragment::{Fragment, Region},
+    resources::{RequestLease, SharedResources, StreamLease},
 };
 use crate::Executor;
 
@@ -34,13 +35,64 @@ use crate::Executor;
 pub(crate) struct Engine {
     pub(crate) executor: Executor,
     pub(crate) gate: Arc<Semaphore>,
+    pub(crate) resources: SharedResources,
 }
 impl Engine {
+    #[cfg(test)]
     pub(crate) fn new(executor: Executor) -> Self {
+        Self::with_resources(executor, SharedResources::default())
+    }
+    pub(crate) fn with_resources(executor: Executor, resources: SharedResources) -> Self {
         Self {
             executor,
-            gate: Arc::new(Semaphore::new(1)),
+            gate: resources.gate(),
+            resources,
         }
+    }
+    pub(crate) async fn run<T, F>(
+        self: &Arc<Self>,
+        batch: arrow_array::RecordBatch,
+        scratch: u64,
+        canceled: Arc<AtomicBool>,
+        work: F,
+    ) -> Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Executor, &arrow_array::RecordBatch, &mut RequestLease) -> Result<T>
+            + Send
+            + 'static,
+    {
+        let mut lease = self.resources.request(&batch, scratch)?;
+        let permit = self.gate.clone().acquire_owned().await.map_err(execution)?;
+        let engine = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            engine.resources.ensure_healthy()?;
+            if canceled.load(Ordering::Acquire) {
+                return Err(execution("cancelled before submission"));
+            }
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                work(&engine.executor, &batch, &mut lease)
+            }))
+            .unwrap_or_else(|_| Err(execution("blocking device worker panicked")));
+            if result.is_err() {
+                // Retain admission/reservations until submitted backend work is
+                // drained, including errors/panics during upload or submission.
+                let drained = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    cubecl::future::block_on(engine.executor.client.sync())
+                }));
+                if !matches!(drained, Ok(Ok(()))) {
+                    engine.resources.poison();
+                    return Err(execution("backend drain failed; resource group poisoned"));
+                }
+            }
+            if result.is_ok() {
+                lease.complete();
+            }
+            result
+        })
+        .await
+        .map_err(execution)?
     }
 }
 impl fmt::Debug for Engine {
@@ -48,6 +100,7 @@ impl fmt::Debug for Engine {
         f.debug_struct("Engine")
             .field("cube_size", &self.executor.cube_size())
             .field("budget", &self.executor.budget())
+            .field("shared_resources", &self.resources)
             .finish()
     }
 }
@@ -162,43 +215,52 @@ impl ExecutionPlan for CubeExec {
             partition,
             rows: MetricBuilder::new(&self.metrics).counter("input_rows", partition),
             output: MetricBuilder::new(&self.metrics).counter("output_rows", partition),
+            lease: None,
         };
         let stream = futures::stream::try_unfold(state, |mut state| async move {
-            let Some(batch) = state.input.try_next().await? else {
-                return Ok(None);
-            };
-            let permit = state
-                .engine
-                .gate
-                .clone()
-                .acquire_owned()
-                .await
-                .map_err(execution)?;
-            let engine = state.engine.clone();
-            let fragment = state.fragment.clone();
-            let cancelled = state.cancellation.0.clone();
-            let rows = batch.num_rows();
-            let result = tokio::task::spawn_blocking(move || {
-                let _permit = permit;
-                if cancelled.load(Ordering::Acquire) {
-                    return Err(execution("cancelled before submission"));
+            if state.lease.is_none() {
+                state.lease = Some(state.engine.resources.stream(state.fragment.outputs())?);
+            }
+            let result: Result<Option<arrow_array::RecordBatch>> = async {
+                let Some(batch) = state.input.try_next().await? else {
+                    return Ok(None);
+                };
+                let scratch = state.fragment.workspace(batch.num_rows())?;
+                let fragment = state.fragment.clone();
+                let cancelled = state.cancellation.0.clone();
+                let rows = batch.num_rows();
+                let result = state
+                    .engine
+                    .run(batch, scratch, cancelled, move |executor, batch, lease| {
+                        fragment.run(executor, batch, lease)
+                    })
+                    .await
+                    .map_err(|e| {
+                        DataFusionError::Context(
+                            format!(
+                                "Cuberel partition={} batch={}",
+                                state.partition, state.batch
+                            ),
+                            Box::new(e),
+                        )
+                    })?;
+                state.rows.add(rows);
+                state.output.add(result.num_rows());
+                state.batch += 1;
+                Ok(Some(result))
+            }
+            .await;
+            match result {
+                Ok(Some(result)) => Ok(Some((result, state))),
+                Ok(None) => {
+                    state.lease.as_mut().unwrap().finish(false);
+                    Ok(None)
                 }
-                // The permit and all input/device ownership survive cancellation.
-                // A submitted kernel is drained by materialize, never host-retried.
-                fragment.run(&engine.executor, &batch)
-            })
-            .await
-            .map_err(execution)?
-            .map_err(|e| {
-                execution(format!(
-                    "partition={} batch={}: {e}",
-                    state.partition, state.batch
-                ))
-            })?;
-            state.rows.add(rows);
-            state.output.add(result.num_rows());
-            state.batch += 1;
-            Ok(Some((result, state)))
+                Err(e) => {
+                    state.lease.as_mut().unwrap().finish(true);
+                    Err(e)
+                }
+            }
         });
         Ok(Box::pin(RecordBatchStreamAdapter::new(
             self.schema(),
@@ -221,6 +283,7 @@ struct StreamState {
     batch: usize,
     rows: ::datafusion::physical_plan::metrics::Count,
     output: ::datafusion::physical_plan::metrics::Count,
+    lease: Option<StreamLease>,
 }
 
 pub(crate) fn rewrite(
@@ -270,6 +333,150 @@ mod tests {
     use arrow_schema::{DataType, Field, Schema};
     use futures::TryStreamExt;
     use std::{sync::Arc, time::Duration};
+
+    async fn detached_worker(executor: Executor) {
+        use super::super::resources::{SharedLimits, SharedResources};
+        let resources = SharedResources::new(SharedLimits {
+            max_requests: 1,
+            ..SharedLimits::default()
+        });
+        let engine = Arc::new(Engine::with_resources(executor, resources.clone()));
+        let batch = RecordBatch::try_new(
+            Arc::new(Schema::new(vec![Field::new("x", DataType::Int32, false)])),
+            vec![Arc::new(Int32Array::from(vec![1]))],
+        )
+        .unwrap();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let e = engine.clone();
+        let b = batch.clone();
+        let task = tokio::spawn(async move {
+            e.run(
+                b,
+                4096,
+                Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                move |_, _, lease| {
+                    // A controlled worker latch tests reservation lifetime without
+                    // illegal device operations or a timing assumption about kernels.
+                    lease.device(64)?;
+                    let _ = started_tx.send(());
+                    release_rx.recv().unwrap();
+                    Ok(1)
+                },
+            )
+            .await
+        });
+        started_rx.await.unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert_eq!(resources.snapshot().active_requests, 1);
+        assert_eq!(resources.snapshot().device_bytes, 64);
+        assert!(
+            engine
+                .run(
+                    batch.clone(),
+                    0,
+                    Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    |_, _, _| Ok(2)
+                )
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("requests")
+        );
+        release_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(30), async {
+            while resources.snapshot().active_requests != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(resources.snapshot().device_bytes, 0);
+        assert_eq!(resources.snapshot().host_bytes, 0);
+        let failure = engine
+            .run(
+                batch.clone(),
+                4096,
+                Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                |_, _, lease| -> datafusion::common::Result<usize> {
+                    lease.device(64)?;
+                    panic!("controlled worker panic")
+                },
+            )
+            .await;
+        assert!(failure.unwrap_err().to_string().contains("panicked"));
+        assert!(!resources.snapshot().poisoned);
+        assert_eq!(resources.snapshot().active_requests, 0);
+        assert_eq!(
+            engine
+                .run(
+                    batch,
+                    0,
+                    Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    |_, _, _| Ok(3)
+                )
+                .await
+                .unwrap(),
+            3
+        );
+        let held = engine.gate.clone().acquire_owned().await.unwrap();
+        let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let ran_worker = ran.clone();
+        let e = engine.clone();
+        let b = RecordBatch::new_empty(Arc::new(Schema::empty()));
+        let queued = tokio::spawn(async move {
+            e.run(
+                b,
+                0,
+                Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                move |_, _, _| {
+                    ran_worker.store(true, std::sync::atomic::Ordering::Release);
+                    Ok(4)
+                },
+            )
+            .await
+        });
+        tokio::time::timeout(Duration::from_secs(30), async {
+            while resources.snapshot().active_requests == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        resources.poison();
+        drop(held);
+        assert!(
+            queued
+                .await
+                .unwrap()
+                .unwrap_err()
+                .to_string()
+                .contains("poisoned")
+        );
+        assert!(!ran.load(std::sync::atomic::Ordering::Acquire));
+        assert_eq!(resources.snapshot().active_requests, 0);
+    }
+    #[cfg(feature = "cpu")]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cpu_detached_worker_keeps_reservations_until_drain() {
+        detached_worker(
+            Executor::with_cube_size(cubecl::Device::cpu().unwrap().client(), 8).unwrap(),
+        )
+        .await;
+    }
+    #[cfg(all(feature = "metal", target_vendor = "apple"))]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn metal_detached_worker_keeps_reservations_until_drain() {
+        detached_worker(
+            Executor::with_cube_size(
+                cubecl::Device::metal(Default::default()).unwrap().client(),
+                64,
+            )
+            .unwrap(),
+        )
+        .await;
+    }
 
     async fn cancellation(executor: Executor) {
         let engine = Arc::new(Engine::new(executor.clone()));
