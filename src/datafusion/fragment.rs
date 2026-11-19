@@ -159,7 +159,7 @@ impl Region {
 
 /// Rebind physical column positions through pure projection/filter mappings.
 /// Operations, overflow flags and operand order are retained by with_new_children.
-fn remap(
+pub(crate) fn remap(
     expr: &Arc<dyn PhysicalExpr>,
     positions: &[usize],
     local: &ArrowSchema,

@@ -1,4 +1,4 @@
-//! One bounded filter/project region. No SQL aggregation or cross-query cache.
+//! Bounded filter/project execution and shared SQL device admission.
 use ::datafusion::{
     common::{
         DataFusionError, Result,
@@ -33,7 +33,7 @@ use crate::Executor;
 /// The permit belongs to the blocking worker through completion, even after drop.
 pub(crate) struct Engine {
     pub(crate) executor: Executor,
-    gate: Arc<Semaphore>,
+    pub(crate) gate: Arc<Semaphore>,
 }
 impl Engine {
     pub(crate) fn new(executor: Executor) -> Self {
@@ -206,7 +206,7 @@ impl ExecutionPlan for CubeExec {
         )))
     }
 }
-struct CancelOnDrop(Arc<AtomicBool>);
+pub(crate) struct CancelOnDrop(pub(crate) Arc<AtomicBool>);
 impl Drop for CancelOnDrop {
     fn drop(&mut self) {
         self.0.store(true, Ordering::Release);
@@ -227,8 +227,21 @@ pub(crate) fn rewrite(
     plan: Arc<dyn ExecutionPlan>,
     engine: &Arc<Engine>,
 ) -> Result<Arc<dyn ExecutionPlan>> {
-    if plan.is::<CubeExec>() {
+    if plan.is::<CubeExec>() || plan.is::<super::global::CubeAggregateExec>() {
         return Ok(plan);
+    }
+    if let Ok(exec) = super::global::CubeAggregateExec::try_new(plan.clone(), engine.clone()) {
+        let original_input = exec.children()[0].clone();
+        let input = rewrite(original_input.clone(), engine)?;
+        let exec = Arc::new(exec);
+        return if Arc::ptr_eq(&input, &original_input) {
+            Ok(exec)
+        } else {
+            exec.replace_children(
+                vec![input],
+                ReplaceChildrenOptions::new(ChildrenPropertiesMode::Recompute),
+            )
+        };
     }
     if let Ok(exec) = CubeExec::try_new(plan.clone(), engine.clone()) {
         let input = rewrite(exec.input.clone(), engine)?;

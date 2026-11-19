@@ -37,5 +37,7 @@ Execution must never silently rerun a failed kernel on the host.
 
 The conformance fixtures compare DataFusion CPU with direct Cuberel execution,
 including NULL, all-valid values, I32 extrema, NaN, infinity, signed zero,
-subnormal payloads and checked failure. Full SQL stream/fragment tests belong to
-the next stack layer. SQL global aggregates remain on CPU in F1–F3.
+subnormal payloads and checked failure. Full SQL stream/fragment tests additionally
+cover placement, batches/partitions and lifecycle. SQL global aggregates remained on CPU in F1–F3; the
+[bounded integer aggregate contract](sql-global-aggregates.md) now defines
+supported COUNT, MIN/MAX and widening SUM regions, row proofs and host-state merge.

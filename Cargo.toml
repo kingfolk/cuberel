@@ -40,3 +40,7 @@ required-features = ["datafusion"]
 [[example]]
 name = "datafusion_walkthrough"
 required-features = ["datafusion"]
+
+[[example]]
+name = "datafusion_aggregates"
+required-features = ["datafusion"]
