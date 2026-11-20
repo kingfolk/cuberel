@@ -384,7 +384,9 @@ impl Fragment {
         executor: &Executor,
         input: &RecordBatch,
         lease: &mut super::resources::RequestLease,
+        observation: &super::observation::Observation,
     ) -> Result<RecordBatch> {
+        let prepare_timer = observation.prepare.timer();
         let error = |e| super::exec::execution(e);
         let columns = self
             .input_columns
@@ -403,14 +405,18 @@ impl Fragment {
         let estimate = executor
             .estimate_pipeline_host(&self.pipeline, &host, &self.parameters)
             .map_err(super::exec::execution)?;
+        observation.estimate(&estimate);
         executor
             .budget()
             .check(&estimate)
             .map_err(super::exec::execution)?;
         lease.device(estimate.device_bytes)?;
+        drop(prepare_timer);
+        let _execute_timer = observation.execute_export.timer();
         let result = executor
             .execute_pipeline_host(&self.pipeline, &host, &self.parameters)
             .map_err(super::exec::execution)?;
+        observation.fusion(result.graph());
         let materialized = result
             .materialize_arrow()
             .map_err(super::exec::execution)?

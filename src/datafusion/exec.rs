@@ -9,7 +9,7 @@ use ::datafusion::{
     physical_plan::{
         ChildrenPropertiesMode, DisplayAs, DisplayFormatType, ExecutionPlan, PlanProperties,
         ReplaceChildrenOptions, SendableRecordBatchStream,
-        metrics::{ExecutionPlanMetricsSet, MetricBuilder, MetricsSet},
+        metrics::{ExecutionPlanMetricsSet, MetricsSet},
         stream::RecordBatchStreamAdapter,
     },
 };
@@ -26,6 +26,7 @@ use tokio::sync::Semaphore;
 use super::{
     Unsupported,
     fragment::{Fragment, Region},
+    observation::{Observation, ObservationCache},
     resources::{RequestLease, SharedResources, StreamLease},
 };
 use crate::Executor;
@@ -38,7 +39,7 @@ pub(crate) struct Engine {
     pub(crate) resources: SharedResources,
 }
 impl Engine {
-    #[cfg(test)]
+    #[cfg(all(test, any(feature = "cpu", feature = "metal")))]
     pub(crate) fn new(executor: Executor) -> Self {
         Self::with_resources(executor, SharedResources::default())
     }
@@ -49,6 +50,7 @@ impl Engine {
             resources,
         }
     }
+    #[cfg(all(test, any(feature = "cpu", feature = "metal")))]
     pub(crate) async fn run<T, F>(
         self: &Arc<Self>,
         batch: arrow_array::RecordBatch,
@@ -62,37 +64,89 @@ impl Engine {
             + Send
             + 'static,
     {
-        let mut lease = self.resources.request(&batch, scratch)?;
-        let permit = self.gate.clone().acquire_owned().await.map_err(execution)?;
+        self.run_observed(batch, scratch, canceled, None, work)
+            .await
+    }
+    pub(crate) async fn run_observed<T, F>(
+        self: &Arc<Self>,
+        batch: arrow_array::RecordBatch,
+        scratch: u64,
+        canceled: Arc<AtomicBool>,
+        observation: Option<Arc<Observation>>,
+        work: F,
+    ) -> Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Executor, &arrow_array::RecordBatch, &mut RequestLease) -> Result<T>
+            + Send
+            + 'static,
+    {
+        if let Some(o) = &observation {
+            o.workspace(scratch);
+        }
+        let failure = |e| {
+            if let Some(o) = &observation {
+                o.add("request_errors", 1);
+            }
+            e
+        };
+        let mut lease = self.resources.request(&batch, scratch).map_err(failure)?;
+        let queue_timer = observation.as_ref().map(|o| o.queue.timer());
+        let permit = self
+            .gate
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(execution)
+            .map_err(failure)?;
+        drop(queue_timer);
         let engine = self.clone();
+        let worker_observation = observation.clone();
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            engine.resources.ensure_healthy()?;
-            if canceled.load(Ordering::Acquire) {
-                return Err(execution("cancelled before submission"));
-            }
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                work(&engine.executor, &batch, &mut lease)
-            }))
-            .unwrap_or_else(|_| Err(execution("blocking device worker panicked")));
-            if result.is_err() {
-                // Retain admission/reservations until submitted backend work is
-                // drained, including errors/panics during upload or submission.
-                let drained = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    cubecl::future::block_on(engine.executor.client.sync())
-                }));
-                if !matches!(drained, Ok(Ok(()))) {
-                    engine.resources.poison();
-                    return Err(execution("backend drain failed; resource group poisoned"));
+            let outcome = (|| {
+                engine.resources.ensure_healthy()?;
+                if canceled.load(Ordering::Acquire) {
+                    return Err(execution("cancelled before submission"));
                 }
+                let _observed = worker_observation
+                    .as_ref()
+                    .map(|o| o.worker(&engine.executor));
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    work(&engine.executor, &batch, &mut lease)
+                }))
+                .unwrap_or_else(|_| Err(execution("blocking device worker panicked")));
+                if result.is_err() {
+                    // Retain admission/reservations until submitted backend work is
+                    // drained, including errors/panics during upload or submission.
+                    let drained = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        cubecl::future::block_on(engine.executor.client.sync())
+                    }));
+                    if !matches!(drained, Ok(Ok(()))) {
+                        engine.resources.poison();
+                        return Err(execution("backend drain failed; resource group poisoned"));
+                    }
+                }
+                if result.is_ok() {
+                    lease.complete();
+                }
+                result
+            })();
+            if let Some(o) = &worker_observation {
+                o.add(
+                    if outcome.is_ok() {
+                        "requests_completed"
+                    } else {
+                        "request_errors"
+                    },
+                    1,
+                );
             }
-            if result.is_ok() {
-                lease.complete();
-            }
-            result
+            outcome
         })
         .await
-        .map_err(execution)?
+        .map_err(execution)
+        .map_err(failure)?
     }
 }
 impl fmt::Debug for Engine {
@@ -111,14 +165,19 @@ pub(crate) fn execution(error: impl fmt::Display) -> DataFusionError {
 /// Its output schema/properties come from the equivalent DataFusion region.
 #[derive(Debug)]
 pub struct CubeExec {
-    input: Arc<dyn ExecutionPlan>,
-    region: Region,
+    pub(crate) input: Arc<dyn ExecutionPlan>,
+    pub(crate) region: Region,
+    pub(crate) id: String,
     fragment: Arc<Fragment>,
     engine: Arc<Engine>,
     properties: Arc<PlanProperties>,
     metrics: ExecutionPlanMetricsSet,
+    observations: ObservationCache,
 }
 impl CubeExec {
+    pub(crate) fn fragment_filters(&self) -> usize {
+        self.fragment.filter_count
+    }
     fn try_new(
         region: Arc<dyn ExecutionPlan>,
         engine: Arc<Engine>,
@@ -131,6 +190,8 @@ impl CubeExec {
             fragment: Arc::new(fragment),
             engine,
             metrics: ExecutionPlanMetricsSet::new(),
+            observations: Default::default(),
+            id: "root".into(),
         })
     }
 }
@@ -138,12 +199,15 @@ impl DisplayAs for CubeExec {
     fn fmt_as(&self, _kind: DisplayFormatType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "CubeExec: filter={}, filters={}, outputs={}, nodes={}, boundary=[{}], semantic_profile=df55-i32-v1, max_in_flight=1",
+            "CubeExec: filter={}, filters={}, outputs={}, nodes={}, boundary=[{}], semantic_profile=df55-i32-v1, max_in_flight=1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}",
             self.fragment.filter_count != 0,
             self.fragment.filter_count,
             self.schema().fields().len(),
             self.region.nodes.len(),
-            self.region.boundary
+            self.region.boundary,
+            self.id,
+            self.engine.executor.client.name(),
+            self.engine.resources.limits()
         )
     }
 }
@@ -193,9 +257,9 @@ impl ExecutionPlan for CubeExec {
             return Err(execution("replacement child schema changed"));
         }
         let region = self.region.rebuild(input)?;
-        Ok(Arc::new(
-            Self::try_new(region, self.engine.clone()).map_err(execution)?,
-        ))
+        let mut rebuilt = Self::try_new(region, self.engine.clone()).map_err(execution)?;
+        rebuilt.id = self.id.clone();
+        Ok(Arc::new(rebuilt))
     }
     fn metrics(&self) -> Option<MetricsSet> {
         Some(self.metrics.clone_inner())
@@ -206,6 +270,7 @@ impl ExecutionPlan for CubeExec {
         context: Arc<TaskContext>,
     ) -> Result<SendableRecordBatchStream> {
         let stream = self.input.execute(partition, context)?;
+        let observation = Observation::cached(&self.observations, &self.metrics, partition);
         let state = StreamState {
             input: stream,
             engine: self.engine.clone(),
@@ -213,39 +278,49 @@ impl ExecutionPlan for CubeExec {
             cancellation: CancelOnDrop(Arc::new(AtomicBool::new(false))),
             batch: 0,
             partition,
-            rows: MetricBuilder::new(&self.metrics).counter("input_rows", partition),
-            output: MetricBuilder::new(&self.metrics).counter("output_rows", partition),
+            fragment_id: self.id.clone(),
+            observation: observation.clone(),
             lease: None,
         };
         let stream = futures::stream::try_unfold(state, |mut state| async move {
             if state.lease.is_none() {
-                state.lease = Some(state.engine.resources.stream(state.fragment.outputs())?);
+                state.lease = Some(
+                    state
+                        .engine
+                        .resources
+                        .stream(state.fragment.outputs())
+                        .map_err(|e| {
+                            DataFusionError::Context(
+                                format!(
+                                    "Cuberel fragment={} partition={}",
+                                    state.fragment_id, state.partition
+                                ),
+                                Box::new(e),
+                            )
+                        })?,
+                );
             }
             let result: Result<Option<arrow_array::RecordBatch>> = async {
                 let Some(batch) = state.input.try_next().await? else {
                     return Ok(None);
                 };
+                state.observation.input(batch.num_rows());
                 let scratch = state.fragment.workspace(batch.num_rows())?;
                 let fragment = state.fragment.clone();
                 let cancelled = state.cancellation.0.clone();
-                let rows = batch.num_rows();
+                let worker_observation = state.observation.clone();
                 let result = state
                     .engine
-                    .run(batch, scratch, cancelled, move |executor, batch, lease| {
-                        fragment.run(executor, batch, lease)
-                    })
-                    .await
-                    .map_err(|e| {
-                        DataFusionError::Context(
-                            format!(
-                                "Cuberel partition={} batch={}",
-                                state.partition, state.batch
-                            ),
-                            Box::new(e),
-                        )
-                    })?;
-                state.rows.add(rows);
-                state.output.add(result.num_rows());
+                    .run_observed(
+                        batch,
+                        scratch,
+                        cancelled,
+                        Some(state.observation.clone()),
+                        move |executor, batch, lease| {
+                            fragment.run(executor, batch, lease, &worker_observation)
+                        },
+                    )
+                    .await?;
                 state.batch += 1;
                 Ok(Some(result))
             }
@@ -258,14 +333,20 @@ impl ExecutionPlan for CubeExec {
                 }
                 Err(e) => {
                     state.lease.as_mut().unwrap().finish(true);
-                    Err(e)
+                    Err(DataFusionError::Context(
+                        format!(
+                            "Cuberel fragment={} partition={} batch={}",
+                            state.fragment_id, state.partition, state.batch
+                        ),
+                        Box::new(e),
+                    ))
                 }
             }
         });
-        Ok(Box::pin(RecordBatchStreamAdapter::new(
+        Ok(observation.stream(Box::pin(RecordBatchStreamAdapter::new(
             self.schema(),
             stream,
-        )))
+        ))))
     }
 }
 pub(crate) struct CancelOnDrop(pub(crate) Arc<AtomicBool>);
@@ -280,9 +361,9 @@ struct StreamState {
     fragment: Arc<Fragment>,
     cancellation: CancelOnDrop,
     partition: usize,
+    fragment_id: String,
     batch: usize,
-    rows: ::datafusion::physical_plan::metrics::Count,
-    output: ::datafusion::physical_plan::metrics::Count,
+    observation: Arc<Observation>,
     lease: Option<StreamLease>,
 }
 
@@ -290,12 +371,20 @@ pub(crate) fn rewrite(
     plan: Arc<dyn ExecutionPlan>,
     engine: &Arc<Engine>,
 ) -> Result<Arc<dyn ExecutionPlan>> {
+    rewrite_at(plan, engine, "root")
+}
+fn rewrite_at(
+    plan: Arc<dyn ExecutionPlan>,
+    engine: &Arc<Engine>,
+    id: &str,
+) -> Result<Arc<dyn ExecutionPlan>> {
     if plan.is::<CubeExec>() || plan.is::<super::global::CubeAggregateExec>() {
         return Ok(plan);
     }
-    if let Ok(exec) = super::global::CubeAggregateExec::try_new(plan.clone(), engine.clone()) {
+    if let Ok(mut exec) = super::global::CubeAggregateExec::try_new(plan.clone(), engine.clone()) {
+        exec.id = id.into();
         let original_input = exec.children()[0].clone();
-        let input = rewrite(original_input.clone(), engine)?;
+        let input = rewrite_at(original_input.clone(), engine, &format!("{id}.0"))?;
         let exec = Arc::new(exec);
         return if Arc::ptr_eq(&input, &original_input) {
             Ok(exec)
@@ -306,18 +395,43 @@ pub(crate) fn rewrite(
             )
         };
     }
-    if let Ok(exec) = CubeExec::try_new(plan.clone(), engine.clone()) {
-        let input = rewrite(exec.input.clone(), engine)?;
+    if let Ok(mut exec) = CubeExec::try_new(plan.clone(), engine.clone()) {
+        exec.id = id.into();
+        let input = rewrite_at(exec.input.clone(), engine, &format!("{id}.0"))?;
         if Arc::ptr_eq(&input, &exec.input) {
             return Ok(Arc::new(exec));
         }
         let root = exec.region.rebuild(input)?;
         let mut rebuilt = CubeExec::try_new(root, engine.clone()).map_err(execution)?;
         rebuilt.region.boundary = exec.region.boundary;
+        rebuilt.id = id.into();
         return Ok(Arc::new(rebuilt));
     }
+    let mut index = 0;
     Ok(plan
-        .map_children(|child| rewrite(child, engine).map(Transformed::yes))?
+        .map_children(|child| {
+            let child_id = format!("{id}.{index}");
+            index += 1;
+            rewrite_at(child, engine, &child_id).map(Transformed::yes)
+        })?
+        .data)
+}
+pub(crate) fn restore_cpu(plan: Arc<dyn ExecutionPlan>) -> Result<Arc<dyn ExecutionPlan>> {
+    if let Some(exec) = plan.downcast_ref::<CubeExec>() {
+        return exec.region.rebuild(restore_cpu(exec.input.clone())?);
+    }
+    if let Some(exec) = plan.downcast_ref::<super::global::CubeAggregateExec>() {
+        let mut root = restore_cpu(exec.plan.input.clone())?;
+        for node in exec.plan.nodes.iter().rev() {
+            root = node.clone().replace_children(
+                vec![root],
+                ReplaceChildrenOptions::new(ChildrenPropertiesMode::Recompute),
+            )?;
+        }
+        return Ok(root);
+    }
+    Ok(plan
+        .map_children(|child| restore_cpu(child).map(Transformed::yes))?
         .data)
 }
 

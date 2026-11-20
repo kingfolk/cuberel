@@ -29,7 +29,7 @@ use ::datafusion::{
         coalesce_partitions::CoalescePartitionsExec,
         execution_plan::Boundedness,
         filter::FilterExec,
-        metrics::{ExecutionPlanMetricsSet, MetricBuilder, MetricsSet},
+        metrics::{ExecutionPlanMetricsSet, MetricsSet},
         projection::ProjectionExec,
         repartition::RepartitionExec,
         stream::RecordBatchStreamAdapter,
@@ -70,7 +70,7 @@ enum Kind {
 
 /// A proof from an immutable memory-source snapshot, not estimated statistics.
 /// Only explicitly known non-expanding unary operators can propagate it.
-fn row_bound(plan: &Arc<dyn ExecutionPlan>, depth: usize) -> Placement<u64> {
+pub(crate) fn row_bound(plan: &Arc<dyn ExecutionPlan>, depth: usize) -> Placement<u64> {
     if depth > 128 {
         return Err(reject("unknown_aggregate_bound", "bound traversal limit"));
     }
@@ -123,12 +123,12 @@ fn validate_shape(agg: &AggregateExec) -> Placement<()> {
 }
 
 #[derive(Debug)]
-struct GlobalPlan {
-    nodes: Vec<Arc<dyn ExecutionPlan>>,
-    input: Arc<dyn ExecutionPlan>,
+pub(crate) struct GlobalPlan {
+    pub(crate) nodes: Vec<Arc<dyn ExecutionPlan>>,
+    pub(crate) input: Arc<dyn ExecutionPlan>,
     schema: SchemaRef,
     properties: Arc<PlanProperties>,
-    inspection: GlobalAggregateInspection,
+    pub(crate) inspection: GlobalAggregateInspection,
     pipeline: Pipeline,
     parameters: Parameters,
     kinds: Vec<Kind>,
@@ -138,7 +138,7 @@ struct GlobalPlan {
     roots: Vec<Arc<dyn PhysicalExpr>>,
 }
 impl GlobalPlan {
-    fn compile(root: Arc<dyn ExecutionPlan>) -> Placement<Self> {
+    pub(crate) fn compile(root: Arc<dyn ExecutionPlan>) -> Placement<Self> {
         let agg = root
             .downcast_ref::<AggregateExec>()
             .ok_or_else(|| reject("unsupported_aggregate", "not AggregateExec"))?;
@@ -432,7 +432,9 @@ impl GlobalPlan {
         executor: &Executor,
         batch: &RecordBatch,
         lease: &mut super::resources::RequestLease,
+        observation: &super::observation::Observation,
     ) -> Result<Vec<AggregateValue>> {
+        let prepare_timer = observation.prepare.timer();
         let input = RecordBatch::try_new_with_options(
             self.input_schema.clone(),
             self.columns
@@ -447,11 +449,16 @@ impl GlobalPlan {
         let estimate = executor
             .estimate_pipeline_host(&self.pipeline, &host, &self.parameters)
             .map_err(execution)?;
+        observation.estimate(&estimate);
         executor.budget().check(&estimate).map_err(execution)?;
         lease.device(estimate.device_bytes)?;
-        Ok(executor
+        drop(prepare_timer);
+        let _execute_timer = observation.execute_export.timer();
+        let result = executor
             .execute_pipeline_host(&self.pipeline, &host, &self.parameters)
-            .map_err(execution)?
+            .map_err(execution)?;
+        observation.fusion(result.graph());
+        Ok(result
             .materialize()
             .map_err(execution)?
             .aggregates
@@ -519,9 +526,11 @@ fn merge(kinds: &[Kind], states: &mut [AggregateValue], batch: Vec<AggregateValu
 /// cancellation cannot publish partial scalar states or preempt submitted work.
 #[derive(Debug)]
 pub struct CubeAggregateExec {
-    plan: Arc<GlobalPlan>,
+    pub(crate) plan: Arc<GlobalPlan>,
+    pub(crate) id: String,
     engine: Arc<Engine>,
     metrics: ExecutionPlanMetricsSet,
+    observations: super::observation::ObservationCache,
 }
 impl CubeAggregateExec {
     pub(crate) fn try_new(root: Arc<dyn ExecutionPlan>, engine: Arc<Engine>) -> Placement<Self> {
@@ -529,6 +538,8 @@ impl CubeAggregateExec {
             plan: Arc::new(GlobalPlan::compile(root)?),
             engine,
             metrics: ExecutionPlanMetricsSet::new(),
+            observations: Default::default(),
+            id: "root".into(),
         })
     }
 }
@@ -536,10 +547,13 @@ impl DisplayAs for CubeAggregateExec {
     fn fmt_as(&self, _kind: DisplayFormatType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "CubeAggregateExec: global=true, aggregates={}, filters={}, input_upper_bound={}, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1",
+            "CubeAggregateExec: global=true, aggregates={}, filters={}, input_upper_bound={}, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}",
             self.plan.kinds.len(),
             self.plan.inspection.filters,
-            self.plan.inspection.input_upper_bound
+            self.plan.inspection.input_upper_bound,
+            self.id,
+            self.engine.executor.client.name(),
+            self.engine.resources.limits()
         )
     }
 }
@@ -591,9 +605,9 @@ impl ExecutionPlan for CubeAggregateExec {
                 ReplaceChildrenOptions::new(ChildrenPropertiesMode::Recompute),
             )?;
         }
-        Ok(Arc::new(
-            Self::try_new(root, self.engine.clone()).map_err(execution)?,
-        ))
+        let mut rebuilt = Self::try_new(root, self.engine.clone()).map_err(execution)?;
+        rebuilt.id = self.id.clone();
+        Ok(Arc::new(rebuilt))
     }
     fn metrics(&self) -> Option<MetricsSet> {
         Some(self.metrics.clone_inner())
@@ -610,10 +624,17 @@ impl ExecutionPlan for CubeAggregateExec {
         let plan = self.plan.clone();
         let engine = self.engine.clone();
         let cancellation = CancelOnDrop(Arc::new(AtomicBool::new(false)));
-        let rows = MetricBuilder::new(&self.metrics).counter("input_rows", 0);
-        let output = MetricBuilder::new(&self.metrics).counter("output_rows", 0);
+        let observation =
+            super::observation::Observation::cached(&self.observations, &self.metrics, 0);
+        let stream_observation = observation.clone();
+        let fragment_id = self.id.clone();
         let stream = futures::stream::once(async move {
-            let mut stream_lease = engine.resources.stream(plan.kinds.len())?;
+            let mut stream_lease = engine.resources.stream(plan.kinds.len()).map_err(|e| {
+                ::datafusion::common::DataFusionError::Context(
+                    format!("Cuberel fragment={fragment_id} partition=0"),
+                    Box::new(e),
+                )
+            })?;
             let result = async {
                 let mut states = plan
                     .kinds
@@ -627,6 +648,7 @@ impl ExecutionPlan for CubeAggregateExec {
                 let mut seen = 0_u64;
                 let mut ordinal = 0;
                 while let Some(batch) = input.try_next().await? {
+                    stream_observation.input(batch.num_rows());
                     seen = seen
                         .checked_add(batch.num_rows() as u64)
                         .ok_or_else(|| execution("input count overflow"))?;
@@ -640,32 +662,39 @@ impl ExecutionPlan for CubeAggregateExec {
                     )?;
                     let worker_plan = plan.clone();
                     let cancelled = cancellation.0.clone();
+                    let worker_observation = stream_observation.clone();
                     let values = engine
-                        .run(batch, scratch, cancelled, move |executor, batch, lease| {
-                            worker_plan.run(executor, batch, lease)
-                        })
+                        .run_observed(
+                            batch,
+                            scratch,
+                            cancelled,
+                            Some(stream_observation.clone()),
+                            move |executor, batch, lease| {
+                                worker_plan.run(executor, batch, lease, &worker_observation)
+                            },
+                        )
                         .await
                         .map_err(|e| {
                             ::datafusion::common::DataFusionError::Context(
-                                format!("Cuberel partition=0 batch={ordinal}"),
+                                format!(
+                                    "Cuberel fragment={fragment_id} partition=0 batch={ordinal}"
+                                ),
                                 Box::new(e),
                             )
                         })?;
                     merge(&plan.kinds, &mut states, values)?;
                     ordinal += 1;
                 }
-                rows.add(seen as usize);
-                output.add(1);
                 stream_lease.output(plan.output(states)?)
             }
             .await;
             stream_lease.finish(result.is_err());
             result
         });
-        Ok(Box::pin(RecordBatchStreamAdapter::new(
+        Ok(observation.stream(Box::pin(RecordBatchStreamAdapter::new(
             self.schema(),
             stream,
-        )))
+        ))))
     }
 }
 
