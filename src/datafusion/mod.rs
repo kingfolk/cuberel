@@ -4,11 +4,16 @@
 //! explicitly supplied executor enables supported device fragments.
 
 mod capability;
+mod diagnostics;
 mod exec;
 mod fragment;
 mod global;
+mod observation;
 mod resources;
 pub use capability::{TranslatedExpression, Unsupported, translate_expression};
+pub use diagnostics::{
+    Placement, PlacementDecision, PlacementMode, PlacementReport, placement_report,
+};
 pub use exec::CubeExec;
 pub use fragment::{FragmentInspection, inspect_fragment};
 pub use global::{CubeAggregateExec, GlobalAggregateInspection, inspect_global_aggregate};
@@ -27,7 +32,8 @@ use ::datafusion::{
 #[derive(Clone, Debug, Default)]
 pub struct AdapterOptions {
     pub enabled: bool,
-    engine: Option<Arc<exec::Engine>>,
+    pub(crate) engine: Option<Arc<exec::Engine>>,
+    pub(crate) placement_mode: PlacementMode,
 }
 
 impl AdapterOptions {
@@ -36,6 +42,7 @@ impl AdapterOptions {
         Self {
             enabled: true,
             engine: None,
+            placement_mode: PlacementMode::OptIn,
         }
     }
 
@@ -49,7 +56,12 @@ impl AdapterOptions {
         Self {
             enabled: true,
             engine: Some(Arc::new(exec::Engine::with_resources(executor, resources))),
+            placement_mode: PlacementMode::OptIn,
         }
+    }
+    pub fn with_placement_mode(mut self, mode: PlacementMode) -> Self {
+        self.placement_mode = mode;
+        self
     }
 }
 
@@ -75,6 +87,12 @@ impl PhysicalOptimizerRule for CubeRule {
         plan: Arc<dyn ExecutionPlan>,
         _config: &ConfigOptions,
     ) -> Result<Arc<dyn ExecutionPlan>> {
+        if self.options.placement_mode == PlacementMode::CpuOnly {
+            return exec::restore_cpu(plan);
+        }
+        if self.options.placement_mode == PlacementMode::RequireCandidates {
+            diagnostics::require(&placement_report(plan.clone(), &self.options)?)?;
+        }
         match &self.options.engine {
             Some(engine) => exec::rewrite(plan, engine),
             None => Ok(plan),

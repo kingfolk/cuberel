@@ -55,8 +55,8 @@ lower-boundary reason, semantic profile and the one-request admission limit.
 field positions without device work, or a structured rejection when the root
 cannot be placed. This also explains fully rejected roots (for example a
 33-column projection), which remain ordinary CPU nodes in EXPLAIN. Basic
-input/output row metrics are available. Whole-query placement reports and full
-transfer/timing metrics are F7 work.
+input/output row metrics and [placement/fragment diagnostics](sql-diagnostics.md)
+are available, including actual transfer/submission counters and wall timings.
 One logical export may involve multiple buffer/count/error readbacks; inspect
 the executor's actual counters rather than assuming one read per fragment.
 
