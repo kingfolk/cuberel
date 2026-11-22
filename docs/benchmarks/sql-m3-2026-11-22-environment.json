@@ -1,0 +1,34 @@
+{
+  "created_utc": "2026-11-22T15:02:45.747913+00:00",
+  "command": [
+    "scripts/sql_acceptance.py",
+    "--binary",
+    "/private/tmp/cuberel-f8-release/release/examples/sql_acceptance",
+    "--out",
+    "/private/tmp/cuberel-f8-measurements",
+    "--warm",
+    "5"
+  ],
+  "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
+  "hardware": "Apple M1\n17179869184",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t15.5\nBuildVersion:\t\t24F74",
+  "rust": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+  "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+  "base_commit": "227f98348f3b8a65906d54c54ed06f07f9a155ec",
+  "working_diff": "Cargo.toml | 4 ++++\n README.md  | 3 +++\n 2 files changed, 7 insertions(+)",
+  "working_status": "M Cargo.toml\n M README.md\n?? docs/sql-acceptance.md\n?? examples/sql_acceptance.rs\n?? examples/support/\n?? scripts/\n?? tests/datafusion_acceptance.rs",
+  "source_sha256": {
+    "examples/sql_acceptance.rs": "1ec9341c3ba7ee62dbff3788befeb50dbe4ccad033654142f8607c7d31fa0f06",
+    "examples/support/sql_acceptance.rs": "3e1eff82a98e7843dd04f80a9b605ec46e6ce7a151d8830f15955392ad3125db",
+    "scripts/sql_acceptance.py": "841bded29d794b56cccdbcbcff640befd1ff17ebbe7c17cac90633258a9553f2",
+    "Cargo.toml": "a7a7f7eeee0680aad69c846fb27a828aa686209dd386118955c78605c8f081bd",
+    "Cargo.lock": "ec320e17d2d7fd62b2532fbc005f5d5fa80bd4e6d42329e72f748949011f0b49"
+  },
+  "binary_sha256": "93b6c4b1c4802f5dde617047bcc3b12e3819c3d744170395b4d67ae88a57e934",
+  "binary": "/private/tmp/cuberel-f8-release/release/examples/sql_acceptance",
+  "profile": "release (build command recorded in report)",
+  "environment": {},
+  "warm_samples": 5,
+  "note": "sequential processes; OS/driver caches not cleared; no concurrent queries",
+  "archive_format": "CSV record delimiters normalized from CRLF to LF; parsed cells unchanged. Final blank line removed from combined plans."
+}
