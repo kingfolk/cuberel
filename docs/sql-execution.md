@@ -55,8 +55,8 @@ lower-boundary reason, semantic profile and the one-request admission limit.
 field positions without device work, or a structured rejection when the root
 cannot be placed. This also explains fully rejected roots (for example a
 33-column projection), which remain ordinary CPU nodes in EXPLAIN. Basic
-input/output row metrics are available. Whole-query placement reports and full
-transfer/timing metrics are F7 work.
+input/output row metrics and [placement/fragment diagnostics](sql-diagnostics.md)
+are available, including actual transfer/submission counters and wall timings.
 One logical export may involve multiple buffer/count/error readbacks; inspect
 the executor's actual counters rather than assuming one read per fragment.
 
@@ -66,7 +66,9 @@ the executor's actual counters rather than assuming one read per fragment.
 stream pulls one child batch on demand and never prefetches while its output is
 waiting for a consumer. A semaphore shared by the adapter's queries/partitions
 permits one device request at a time. Waiting partitions may retain one host
-batch each; comprehensive host-byte reservations and fairness tuning remain F6.
+batch each, charged against the shared request/host limits described in
+[SQL lifecycle](sql-lifecycle.md). Exhausted bytes/slots fail explicitly rather
+than entering an unbounded wait queue.
 
 Blocking upload/complete/materialize run in Tokio's blocking pool. The worker
 owns the admission permit and input buffers until completion, including when

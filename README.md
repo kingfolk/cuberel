@@ -26,6 +26,10 @@ without a CubeCL runtime. See the [registration contract](docs/datafusion-integr
 Bounded global COUNT, Int32 MIN/MAX and widening Int32 SUM are described in
 [SQL aggregation](docs/sql-global-aggregates.md), including cross-batch and
 partition merge contracts.
+The [SQL lifecycle contract](docs/sql-lifecycle.md) specifies shared resource
+limits, consumer-owned output reservations, backpressure and cancellation drain.
+See [SQL diagnostics](docs/sql-diagnostics.md) for placement reports, CPU-only and
+required-candidate modes, EXPLAIN fields and measured fragment counters/timings.
 
 Supported contiguous filter/project chains share one device upload and retain
 selection state until the fragment exports Arrow. Pure rename/reorder projections

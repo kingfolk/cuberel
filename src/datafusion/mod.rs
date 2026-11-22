@@ -4,13 +4,20 @@
 //! explicitly supplied executor enables supported device fragments.
 
 mod capability;
+mod diagnostics;
 mod exec;
 mod fragment;
 mod global;
+mod observation;
+mod resources;
 pub use capability::{TranslatedExpression, Unsupported, translate_expression};
+pub use diagnostics::{
+    Placement, PlacementDecision, PlacementMode, PlacementReport, placement_report,
+};
 pub use exec::CubeExec;
 pub use fragment::{FragmentInspection, inspect_fragment};
 pub use global::{CubeAggregateExec, GlobalAggregateInspection, inspect_global_aggregate};
+pub use resources::{ResourceSnapshot, SharedLimits, SharedResourceError, SharedResources};
 
 use std::sync::Arc;
 
@@ -25,7 +32,8 @@ use ::datafusion::{
 #[derive(Clone, Debug, Default)]
 pub struct AdapterOptions {
     pub enabled: bool,
-    engine: Option<Arc<exec::Engine>>,
+    pub(crate) engine: Option<Arc<exec::Engine>>,
+    pub(crate) placement_mode: PlacementMode,
 }
 
 impl AdapterOptions {
@@ -34,15 +42,26 @@ impl AdapterOptions {
         Self {
             enabled: true,
             engine: None,
+            placement_mode: PlacementMode::OptIn,
         }
     }
 
     /// Explicit opt-in. Clones share one in-flight device request across queries.
     pub fn with_executor(executor: crate::Executor) -> Self {
+        Self::with_resources(executor, SharedResources::default())
+    }
+
+    /// Share one admission gate and logical byte limits with other adapters.
+    pub fn with_resources(executor: crate::Executor, resources: SharedResources) -> Self {
         Self {
             enabled: true,
-            engine: Some(Arc::new(exec::Engine::new(executor))),
+            engine: Some(Arc::new(exec::Engine::with_resources(executor, resources))),
+            placement_mode: PlacementMode::OptIn,
         }
+    }
+    pub fn with_placement_mode(mut self, mode: PlacementMode) -> Self {
+        self.placement_mode = mode;
+        self
     }
 }
 
@@ -68,6 +87,12 @@ impl PhysicalOptimizerRule for CubeRule {
         plan: Arc<dyn ExecutionPlan>,
         _config: &ConfigOptions,
     ) -> Result<Arc<dyn ExecutionPlan>> {
+        if self.options.placement_mode == PlacementMode::CpuOnly {
+            return exec::restore_cpu(plan);
+        }
+        if self.options.placement_mode == PlacementMode::RequireCandidates {
+            diagnostics::require(&placement_report(plan.clone(), &self.options)?)?;
+        }
         match &self.options.engine {
             Some(engine) => exec::rewrite(plan, engine),
             None => Ok(plan),

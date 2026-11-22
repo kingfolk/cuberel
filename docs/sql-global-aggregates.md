@@ -62,7 +62,8 @@ owns the permit and inputs through completion even if the stream is dropped.
 Cancellation stops future pulling/submission; submitted kernels are not preempted.
 No final row is emitted before EOF, or after a later batch/checked argument error.
 Resource rejection happens before upload and runtime errors never retry on CPU.
-Broader host-byte reservations/fairness remain the separate lifecycle feature.
+Shared host/device reservations and output ownership follow the
+[SQL lifecycle contract](sql-lifecycle.md).
 
 ## SUM range and argument semantics
 
