@@ -1,0 +1,56 @@
+{
+  "created_utc": "2026-11-23T02:25:47.745024+00:00",
+  "command": [
+    "scripts/sql_acceptance.py",
+    "--binary",
+    "/private/tmp/cuberel-f8-release/release/examples/sql_acceptance",
+    "--out",
+    "/private/tmp/cuberel-m4-phase-study",
+    "--batch-study",
+    "--study-rows",
+    "1048576",
+    "--batch-sizes",
+    "65536",
+    "262144",
+    "1048576",
+    "--backends",
+    "datafusion",
+    "metal",
+    "--repeats",
+    "3",
+    "--warm",
+    "10"
+  ],
+  "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
+  "hardware": "Apple M1\n17179869184",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t15.5\nBuildVersion:\t\t24F74",
+  "rust": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+  "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+  "base_commit": "3b62f41d524d9135d46db2669f21ba0d3acd34e8",
+  "working_diff": "docs/sql-diagnostics.md         | 23 +++++++++++++++++++++++\n examples/sql_acceptance.rs      | 29 ++++++++++++++++++++++++++---\n scripts/sql_acceptance.py       |  8 ++++++++\n src/datafusion/fragment.rs      |  7 +++++++\n src/datafusion/global.rs        |  7 +++++++\n src/datafusion/observation.rs   |  9 +++++++++\n tests/datafusion_diagnostics.rs | 24 ++++++++++++++++++++++++\n 7 files changed, 104 insertions(+), 3 deletions(-)",
+  "working_status": "M docs/sql-diagnostics.md\n M examples/sql_acceptance.rs\n M scripts/sql_acceptance.py\n M src/datafusion/fragment.rs\n M src/datafusion/global.rs\n M src/datafusion/observation.rs\n M tests/datafusion_diagnostics.rs\n?? docs/sql-phase-profiling.md",
+  "source_sha256": {
+    "examples/sql_acceptance.rs": "67731f87cb4af0f7c1e17b1875ff0ab2fa28fba177bb4788aa10b94b37d57691",
+    "examples/support/sql_acceptance.rs": "3e1eff82a98e7843dd04f80a9b605ec46e6ce7a151d8830f15955392ad3125db",
+    "scripts/sql_acceptance.py": "6243c996810772696dd96f3888b6c5d9522538da63d576a0f7e40e907cc0c027",
+    "Cargo.toml": "a7a7f7eeee0680aad69c846fb27a828aa686209dd386118955c78605c8f081bd",
+    "Cargo.lock": "ec320e17d2d7fd62b2532fbc005f5d5fa80bd4e6d42329e72f748949011f0b49"
+  },
+  "binary_sha256": "bc651cb8ee42c44df8a2be1182e2511bc99fae481fd86ba901e7deaf84b909eb",
+  "binary": "/private/tmp/cuberel-f8-release/release/examples/sql_acceptance",
+  "profile": "release (build command recorded in report)",
+  "environment": {},
+  "warm_samples": 10,
+  "repeats": 3,
+  "batch_sizes": [
+    65536,
+    262144,
+    1048576
+  ],
+  "batch_study": true,
+  "study_rows": [
+    1048576
+  ],
+  "note": "sequential processes; OS/driver caches not cleared; no concurrent queries",
+  "archive_format": "CSV record delimiters normalized to LF without changing cells; per-process command/plan logs combined."
+}

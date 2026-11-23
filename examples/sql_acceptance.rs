@@ -301,7 +301,7 @@ async fn main() -> Result<()> {
     let sql = workload.sql(case.pass);
     eprintln!("sql={sql}\ncase={case:?}\nbackend={backend} path={path} init_ms={init_ms:.6}");
     println!(
-        "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,session_batch_size,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes,input_batches,completed_requests,actual_fused_requests,actual_unfused_requests"
+        "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,session_batch_size,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes,input_batches,completed_requests,actual_fused_requests,actual_unfused_requests,arrow_adapt_ns,resource_preflight_ns,upload_submit_ns,complete_export_ns"
     );
     for sample in 0..=samples {
         let before = e.as_ref().map(Executor::stats).unwrap_or_default();
@@ -405,8 +405,27 @@ async fn main() -> Result<()> {
             })
         });
         let runtime_metrics = runtime_metrics.unwrap_or_default();
+        // These phase timers are DataFusion Cube metrics. Leave them blank for
+        // CPU-baseline and DSL cases, where no Cube plan node reports them.
+        let phase_metrics = plan
+            .as_ref()
+            .filter(|plan| cube_nodes(plan) > 0)
+            .map(|plan| {
+                [
+                    "arrow_adapt",
+                    "resource_preflight",
+                    "upload_submit",
+                    "complete_export",
+                ]
+                .map(|name| {
+                    optional_metric(plan, name)
+                        .map(|value| value.to_string())
+                        .unwrap_or_default()
+                })
+            })
+            .unwrap_or_default();
         println!(
-            "{backend},{path},{},{},{},{},{},{},{},{},{sample},{:.6},{prepare_ms:.6},{execute_ms:.6},{:.6},{output_rows},{},{},{},{},{},{},{},{},{definitions},{},{},{},{},{peak_device},{peak_host},{max_request},{},{},{},{}",
+            "{backend},{path},{},{},{},{},{},{},{},{},{sample},{:.6},{prepare_ms:.6},{execute_ms:.6},{:.6},{output_rows},{},{},{},{},{},{},{},{},{definitions},{},{},{},{},{peak_device},{peak_host},{max_request},{},{},{},{},{},{},{},{}",
             args[2],
             case.rows,
             case.pass,
@@ -436,7 +455,11 @@ async fn main() -> Result<()> {
             runtime_metrics[0],
             runtime_metrics[1],
             runtime_metrics[2],
-            runtime_metrics[3]
+            runtime_metrics[3],
+            phase_metrics[0],
+            phase_metrics[1],
+            phase_metrics[2],
+            phase_metrics[3]
         );
     }
     Ok(())

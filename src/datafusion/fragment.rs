@@ -387,6 +387,7 @@ impl Fragment {
         observation: &super::observation::Observation,
     ) -> Result<RecordBatch> {
         let prepare_timer = observation.prepare.timer();
+        let adapt_timer = observation.arrow_adapt.timer();
         let error = |e| super::exec::execution(e);
         let columns = self
             .input_columns
@@ -402,6 +403,8 @@ impl Fragment {
         let adapter =
             ArrowBatch::try_new(&self.input_program, &renamed).map_err(super::exec::execution)?;
         let host = adapter.as_batch().map_err(super::exec::execution)?;
+        drop(adapt_timer);
+        let preflight_timer = observation.resource_preflight.timer();
         let estimate = executor
             .estimate_pipeline_host(&self.pipeline, &host, &self.parameters)
             .map_err(super::exec::execution)?;
@@ -411,12 +414,16 @@ impl Fragment {
             .check(&estimate)
             .map_err(super::exec::execution)?;
         lease.device(estimate.device_bytes)?;
+        drop(preflight_timer);
         drop(prepare_timer);
         let _execute_timer = observation.execute_export.timer();
+        let submit_timer = observation.upload_submit.timer();
         let result = executor
             .execute_pipeline_host(&self.pipeline, &host, &self.parameters)
             .map_err(super::exec::execution)?;
+        drop(submit_timer);
         observation.fusion(result.graph());
+        let _complete_timer = observation.complete_export.timer();
         let materialized = result
             .materialize_arrow()
             .map_err(super::exec::execution)?

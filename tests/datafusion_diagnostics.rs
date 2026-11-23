@@ -112,6 +112,28 @@ mod runtime {
             .map(|m| m.value().as_usize())
             .sum()
     }
+    fn assert_phase_scopes(plan: &Arc<dyn ExecutionPlan>) {
+        let adapt = metric(plan, "arrow_adapt");
+        let preflight = metric(plan, "resource_preflight");
+        let submit = metric(plan, "upload_submit");
+        let complete = metric(plan, "complete_export");
+        for name in [
+            "arrow_adapt",
+            "resource_preflight",
+            "upload_submit",
+            "complete_export",
+        ] {
+            assert!(
+                plan.metrics()
+                    .unwrap()
+                    .iter()
+                    .any(|m| m.value().name() == name)
+            );
+        }
+        assert!(adapt + preflight <= metric(plan, "prepare"));
+        assert!(submit + complete <= metric(plan, "execute_export"));
+        assert!(adapt + preflight + submit + complete <= metric(plan, "worker"));
+    }
     async fn exercise(executor: Executor) {
         let ctx = source().await;
         let sql = "SELECT x AS value,x IS NULL AS missing FROM t WHERE x >= CAST(30 AS INT)";
@@ -173,6 +195,7 @@ mod runtime {
             let opts = AdapterOptions::with_executor(executor.clone());
             let device = rewrite(original, opts.clone()).unwrap();
             let expected = collect(device.clone(), multi.task_ctx()).await.unwrap();
+            assert_phase_scopes(&cube(&device));
             let cpu = rewrite(device, opts.with_placement_mode(PlacementMode::CpuOnly)).unwrap();
             assert!(
                 !displayable(cpu.as_ref())
@@ -229,6 +252,7 @@ mod runtime {
             metric(&node, "observed_launches") as u64,
             after.kernel_launches - before.kernel_launches
         );
+        assert_phase_scopes(&node);
         assert!(metric(&node, "max_estimated_device_bytes") > 0);
         assert!(metric(&node, "unfused_requests") > 0);
         assert!(

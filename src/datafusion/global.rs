@@ -435,6 +435,7 @@ impl GlobalPlan {
         observation: &super::observation::Observation,
     ) -> Result<Vec<AggregateValue>> {
         let prepare_timer = observation.prepare.timer();
+        let adapt_timer = observation.arrow_adapt.timer();
         let input = RecordBatch::try_new_with_options(
             self.input_schema.clone(),
             self.columns
@@ -446,18 +447,24 @@ impl GlobalPlan {
         .map_err(execution)?;
         let arrow = ArrowBatch::try_new(&self.input_program, &input).map_err(execution)?;
         let host = arrow.as_batch().map_err(execution)?;
+        drop(adapt_timer);
+        let preflight_timer = observation.resource_preflight.timer();
         let estimate = executor
             .estimate_pipeline_host(&self.pipeline, &host, &self.parameters)
             .map_err(execution)?;
         observation.estimate(&estimate);
         executor.budget().check(&estimate).map_err(execution)?;
         lease.device(estimate.device_bytes)?;
+        drop(preflight_timer);
         drop(prepare_timer);
         let _execute_timer = observation.execute_export.timer();
+        let submit_timer = observation.upload_submit.timer();
         let result = executor
             .execute_pipeline_host(&self.pipeline, &host, &self.parameters)
             .map_err(execution)?;
+        drop(submit_timer);
         observation.fusion(result.graph());
+        let _complete_timer = observation.complete_export.timer();
         Ok(result
             .materialize()
             .map_err(execution)?

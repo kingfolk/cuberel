@@ -72,6 +72,8 @@ def main():
                         help="SQL DataFusion session batch sizes")
     parser.add_argument("--batch-study", action="store_true",
                         help="run aggregate 64K/1M/2M, one source batch, one partition, pass 50, NULL 20")
+    parser.add_argument("--study-rows", nargs="+", type=positive_int,
+                        help="optional total-row subset for --batch-study")
     parser.add_argument("--backends", nargs="+", default=["datafusion", "cpu", "metal"],
                         choices=["datafusion", "cpu", "metal"])
     parser.add_argument("--quick", action="store_true")
@@ -80,6 +82,8 @@ def main():
         parser.error("--batch-sizes must not contain duplicates")
     if len(set(args.backends)) != len(args.backends):
         parser.error("--backends must not contain duplicates")
+    if args.study_rows is not None and (not args.batch_study or len(set(args.study_rows)) != len(args.study_rows)):
+        parser.error("--study-rows requires --batch-study and unique row counts")
     binary = args.binary.resolve(strict=True)
     args.out.mkdir(parents=True, exist_ok=False)
     metadata = {
@@ -100,6 +104,7 @@ def main():
                         if k in ("RAYON_NUM_THREADS", "TOKIO_WORKER_THREADS", "CUBECL_LOG_LEVEL")},
         "warm_samples": args.warm, "repeats": args.repeats,
         "batch_sizes": args.batch_sizes, "batch_study": args.batch_study,
+        "study_rows": args.study_rows,
         "note": "sequential processes; OS/driver caches not cleared; no concurrent queries",
     }
     (args.out / "environment.json").write_text(json.dumps(metadata, indent=2) + "\n")
@@ -107,6 +112,8 @@ def main():
     summaries = []
     jobs = []
     selected_cases = batch_study_cases() if args.batch_study else cases(args.quick)
+    if args.study_rows is not None:
+        selected_cases = [("aggregate", rows, 50, 20, 1, 1) for rows in args.study_rows]
     for case in selected_cases:
         dsl_case = case[0] != "mixed" and (args.quick or case[2:] == (50, 20, 1, 1))
         for repeat in range(1, args.repeats + 1):
@@ -165,6 +172,7 @@ def main():
                     "upload_calls", "upload_bytes", "readback_calls", "readback_bytes",
                     "allocation_calls", "allocation_bytes", "launches", "count_reads",
                     "define_calls", "queue_wait_ns", "adapter_prepare_ns", "execute_export_ns", "worker_ns",
+                    "arrow_adapt_ns", "resource_preflight_ns", "upload_submit_ns", "complete_export_ns",
                     "peak_device_bytes", "peak_host_bytes", "max_request_device_bytes"):
             summary["warm_last_" + key] = warm[-1][key]
         summaries.append(summary)
