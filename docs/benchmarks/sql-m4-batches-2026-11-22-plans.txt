@@ -1,0 +1,1007 @@
+# datafusion-sql-aggregate-1048576-50-20-1-1-repeat1-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000125
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.58µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=167ns, expr_1_eval_time=83ns, expr_2_eval_time=41ns, expr_3_eval_time=41ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=1.63ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=419.4 K, elapsed_compute=2.94ms, output_bytes=4.1 MB, output_batches=1, selectivity=40% (419.4 K/1.05 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-1048576-50-20-1-1-repeat1-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000000
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.21µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=208ns, expr_1_eval_time=42ns, expr_2_eval_time=83ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=1.52ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=419.4 K, elapsed_compute=2.82ms, output_bytes=2.1 MB, output_batches=2, selectivity=40% (419.4 K/1.05 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-1048576-50-20-1-1-repeat1-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000333
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.96µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=166ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=1.27ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=419.4 K, elapsed_compute=2.98ms, output_bytes=1848.0 KB, output_batches=7, selectivity=40% (419.4 K/1.05 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-1048576-50-20-1-1-repeat1-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000500
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.17µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=125ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=1.19ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=419.4 K, elapsed_compute=3.20ms, output_bytes=1716.0 KB, output_batches=52, selectivity=40% (419.4 K/1.05 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-1048576-50-20-1-1-repeat2-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000125
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.33µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=125ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=1.57ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=419.4 K, elapsed_compute=2.91ms, output_bytes=4.1 MB, output_batches=1, selectivity=40% (419.4 K/1.05 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-1048576-50-20-1-1-repeat2-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000042
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.62µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=166ns, expr_1_eval_time=41ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=1.52ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=419.4 K, elapsed_compute=2.80ms, output_bytes=2.1 MB, output_batches=2, selectivity=40% (419.4 K/1.05 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-1048576-50-20-1-1-repeat2-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000208
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.21µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=41ns, expr_1_eval_time=42ns, expr_2_eval_time=83ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=1.24ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=419.4 K, elapsed_compute=2.90ms, output_bytes=1848.0 KB, output_batches=7, selectivity=40% (419.4 K/1.05 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-1048576-50-20-1-1-repeat2-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000000
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.08µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=41ns, expr_1_eval_time=41ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=1.19ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=419.4 K, elapsed_compute=3.21ms, output_bytes=1716.0 KB, output_batches=52, selectivity=40% (419.4 K/1.05 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-1048576-50-20-1-1-repeat3-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000333
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.12µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=42ns, expr_1_eval_time=42ns, expr_2_eval_time=83ns, expr_3_eval_time=41ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=1.58ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=419.4 K, elapsed_compute=2.92ms, output_bytes=4.1 MB, output_batches=1, selectivity=40% (419.4 K/1.05 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-1048576-50-20-1-1-repeat3-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000292
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.62µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=42ns, expr_1_eval_time=42ns, expr_2_eval_time=41ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=1.37ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=419.4 K, elapsed_compute=2.73ms, output_bytes=2.1 MB, output_batches=2, selectivity=40% (419.4 K/1.05 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-1048576-50-20-1-1-repeat3-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000083
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.67µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=209ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=83ns, expr_4_eval_time=41ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=1.27ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=419.4 K, elapsed_compute=2.89ms, output_bytes=1848.0 KB, output_batches=7, selectivity=40% (419.4 K/1.05 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-1048576-50-20-1-1-repeat3-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000083
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.46µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=84ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=41ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=1.21ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=419.4 K, elapsed_compute=3.24ms, output_bytes=1716.0 KB, output_batches=52, selectivity=40% (419.4 K/1.05 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-2097152-50-20-1-1-repeat1-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000041
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.38µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=208ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=3.23ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=838.9 K, elapsed_compute=6.20ms, output_bytes=4.1 MB, output_batches=1, selectivity=40% (838.9 K/2.10 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-2097152-50-20-1-1-repeat1-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000083
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.88µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=208ns, expr_1_eval_time=42ns, expr_2_eval_time=41ns, expr_3_eval_time=41ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=2.98ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=838.9 K, elapsed_compute=5.50ms, output_bytes=4.1 MB, output_batches=4, selectivity=40% (838.9 K/2.10 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-2097152-50-20-1-1-repeat1-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000250
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.54µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=83ns, expr_1_eval_time=41ns, expr_2_eval_time=41ns, expr_3_eval_time=42ns, expr_4_eval_time=83ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=2.28ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=838.9 K, elapsed_compute=5.82ms, output_bytes=3.4 MB, output_batches=13, selectivity=40% (838.9 K/2.10 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-2097152-50-20-1-1-repeat1-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000208
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.71µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=291ns, expr_1_eval_time=41ns, expr_2_eval_time=83ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=2.35ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=838.9 K, elapsed_compute=6.55ms, output_bytes=3.3 MB, output_batches=103, selectivity=40% (838.9 K/2.10 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-2097152-50-20-1-1-repeat2-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000166
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.62µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=208ns, expr_1_eval_time=42ns, expr_2_eval_time=41ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=3.27ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=838.9 K, elapsed_compute=5.94ms, output_bytes=4.1 MB, output_batches=1, selectivity=40% (838.9 K/2.10 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-2097152-50-20-1-1-repeat2-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000375
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.88µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=83ns, expr_1_eval_time=42ns, expr_2_eval_time=83ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=2.97ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=838.9 K, elapsed_compute=5.59ms, output_bytes=4.1 MB, output_batches=4, selectivity=40% (838.9 K/2.10 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-2097152-50-20-1-1-repeat2-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000291
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.58µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=83ns, expr_1_eval_time=41ns, expr_2_eval_time=41ns, expr_3_eval_time=42ns, expr_4_eval_time=84ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=2.27ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=838.9 K, elapsed_compute=5.86ms, output_bytes=3.4 MB, output_batches=13, selectivity=40% (838.9 K/2.10 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-2097152-50-20-1-1-repeat2-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000042
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.12µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=41ns, expr_1_eval_time=83ns, expr_2_eval_time=41ns, expr_3_eval_time=41ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=2.38ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=838.9 K, elapsed_compute=6.62ms, output_bytes=3.3 MB, output_batches=103, selectivity=40% (838.9 K/2.10 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-2097152-50-20-1-1-repeat3-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000333
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.12µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=83ns, expr_1_eval_time=41ns, expr_2_eval_time=83ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=3.10ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=838.9 K, elapsed_compute=6.15ms, output_bytes=4.1 MB, output_batches=1, selectivity=40% (838.9 K/2.10 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-2097152-50-20-1-1-repeat3-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000084
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.88µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=166ns, expr_1_eval_time=41ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=2.93ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=838.9 K, elapsed_compute=5.52ms, output_bytes=4.1 MB, output_batches=4, selectivity=40% (838.9 K/2.10 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-2097152-50-20-1-1-repeat3-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000167
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.92µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=166ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=2.26ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=838.9 K, elapsed_compute=5.87ms, output_bytes=3.4 MB, output_batches=13, selectivity=40% (838.9 K/2.10 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-2097152-50-20-1-1-repeat3-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000083
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.96µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=125ns, expr_1_eval_time=42ns, expr_2_eval_time=83ns, expr_3_eval_time=41ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=2.36ms, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=838.9 K, elapsed_compute=6.67ms, output_bytes=3.3 MB, output_batches=103, selectivity=40% (838.9 K/2.10 M)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-65536-50-20-1-1-repeat1-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000125
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=875ns, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=41ns, expr_1_eval_time=41ns, expr_2_eval_time=41ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=77.71µs, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=26.21 K, elapsed_compute=188.04µs, output_bytes=4.1 MB, output_batches=1, selectivity=40% (26.21 K/65.54 K)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-65536-50-20-1-1-repeat1-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000041
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=875ns, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=83ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=75.29µs, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=26.21 K, elapsed_compute=179.79µs, output_bytes=1056.0 KB, output_batches=1, selectivity=40% (26.21 K/65.54 K)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-65536-50-20-1-1-repeat1-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000125
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=958ns, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=41ns, expr_1_eval_time=42ns, expr_2_eval_time=41ns, expr_3_eval_time=41ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=76.37µs, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=26.21 K, elapsed_compute=182.58µs, output_bytes=264.0 KB, output_batches=1, selectivity=40% (26.21 K/65.54 K)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-65536-50-20-1-1-repeat1-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000208
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.00µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=42ns, expr_1_eval_time=84ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=89.71µs, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=26.21 K, elapsed_compute=225.92µs, output_bytes=132.0 KB, output_batches=4, selectivity=40% (26.21 K/65.54 K)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-65536-50-20-1-1-repeat2-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000125
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=917ns, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=42ns, expr_1_eval_time=84ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=78.00µs, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=26.21 K, elapsed_compute=197.21µs, output_bytes=4.1 MB, output_batches=1, selectivity=40% (26.21 K/65.54 K)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-65536-50-20-1-1-repeat2-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000000
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=917ns, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=83ns, expr_1_eval_time=83ns, expr_2_eval_time=41ns, expr_3_eval_time=41ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=76.58µs, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=26.21 K, elapsed_compute=182.13µs, output_bytes=1056.0 KB, output_batches=1, selectivity=40% (26.21 K/65.54 K)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-65536-50-20-1-1-repeat2-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000125
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=834ns, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=83ns, expr_1_eval_time=42ns, expr_2_eval_time=83ns, expr_3_eval_time=41ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=79.12µs, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=26.21 K, elapsed_compute=186.00µs, output_bytes=264.0 KB, output_batches=1, selectivity=40% (26.21 K/65.54 K)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-65536-50-20-1-1-repeat2-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000041
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=958ns, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=42ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=80.04µs, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=26.21 K, elapsed_compute=208.71µs, output_bytes=132.0 KB, output_batches=4, selectivity=40% (26.21 K/65.54 K)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-65536-50-20-1-1-repeat3-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000125
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=875ns, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=42ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=75.62µs, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=26.21 K, elapsed_compute=187.79µs, output_bytes=4.1 MB, output_batches=1, selectivity=40% (26.21 K/65.54 K)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-65536-50-20-1-1-repeat3-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000083
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=833ns, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=42ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=84ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=79.75µs, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=26.21 K, elapsed_compute=178.00µs, output_bytes=1056.0 KB, output_batches=1, selectivity=40% (26.21 K/65.54 K)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-65536-50-20-1-1-repeat3-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000125
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=833ns, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=42ns, expr_1_eval_time=42ns, expr_2_eval_time=41ns, expr_3_eval_time=41ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=75.38µs, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=26.21 K, elapsed_compute=184.29µs, output_bytes=264.0 KB, output_batches=1, selectivity=40% (26.21 K/65.54 K)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# datafusion-sql-aggregate-65536-50-20-1-1-repeat3-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "datafusion", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=datafusion path=sql init_ms=0.000209
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)]
+    FilterExec: x@0 < 50, projection=[y@1]
+      DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=875ns, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=41ns, expr_1_eval_time=41ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  AggregateExec: mode=Single, gby=[], aggr=[sum(t.y), count(Int64(1)), count(t.y), min(t.y), max(t.y)], metrics=[output_rows=1, elapsed_compute=90.67µs, output_bytes=32.0 B, output_batches=1]
+    FilterExec: x@0 < 50, projection=[y@1], metrics=[output_rows=26.21 K, elapsed_compute=200.67µs, output_bytes=132.0 KB, output_batches=4, selectivity=40% (26.21 K/65.54 K)]
+      DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-1048576-50-20-1-1-repeat1-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=62.088875
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.04µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=834ns, expr_1_eval_time=41ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=1, input_batches=2, input_rows=1.05 M, observed_alloc_bytes=17.51 M, observed_alloc_calls=48, observed_count_reads=0, observed_launches=16, observed_readback_bytes=36, observed_readback_calls=9, observed_upload_bytes=16.78 M, observed_upload_calls=4, request_errors=0, requests_completed=2, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=17.51 M, max_estimated_stages=18, max_output_capacity=1, max_requested_workspace_bytes=234.9 M, execute_export=11.77ms, prepare=5.93ms, queue_wait=668ns, stream_wall=18.18ms, worker=18.11ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-1048576-50-20-1-1-repeat1-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=61.783000
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.75µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=709ns, expr_1_eval_time=41ns, expr_2_eval_time=41ns, expr_3_eval_time=42ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=4, input_batches=5, input_rows=1.05 M, observed_alloc_bytes=17.51 M, observed_alloc_calls=148, observed_count_reads=0, observed_launches=44, observed_readback_bytes=144, observed_readback_calls=36, observed_upload_bytes=16.78 M, observed_upload_calls=16, request_errors=0, requests_completed=5, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=4.38 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=58.73 M, execute_export=11.50ms, prepare=5.53ms, queue_wait=791ns, stream_wall=17.29ms, worker=17.16ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-1048576-50-20-1-1-repeat1-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=60.639708
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.75µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=708ns, expr_1_eval_time=84ns, expr_2_eval_time=125ns, expr_3_eval_time=83ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=16, input_batches=17, input_rows=1.05 M, observed_alloc_bytes=17.51 M, observed_alloc_calls=592, observed_count_reads=0, observed_launches=176, observed_readback_bytes=576, observed_readback_calls=144, observed_upload_bytes=16.78 M, observed_upload_calls=64, request_errors=0, requests_completed=17, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=21.09ms, prepare=5.90ms, queue_wait=1.42µs, stream_wall=27.51ms, worker=27.20ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-1048576-50-20-1-1-repeat1-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=57.815917
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.62µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=1.33µs, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=128, input_batches=129, input_rows=1.05 M, observed_alloc_bytes=17.52 M, observed_alloc_calls=4.74 K, observed_count_reads=0, observed_launches=1.41 K, observed_readback_bytes=4.61 K, observed_readback_calls=1.15 K, observed_upload_bytes=16.78 M, observed_upload_calls=512, request_errors=0, requests_completed=129, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=136.8 K, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=1.85 M, execute_export=115.50ms, prepare=8.73ms, queue_wait=11.42µs, stream_wall=126.19ms, worker=124.41ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-1048576-50-20-1-1-repeat2-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=58.498958
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.04µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=750ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=1, input_batches=2, input_rows=1.05 M, observed_alloc_bytes=17.51 M, observed_alloc_calls=48, observed_count_reads=0, observed_launches=16, observed_readback_bytes=36, observed_readback_calls=9, observed_upload_bytes=16.78 M, observed_upload_calls=4, request_errors=0, requests_completed=2, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=17.51 M, max_estimated_stages=18, max_output_capacity=1, max_requested_workspace_bytes=234.9 M, execute_export=9.94ms, prepare=5.97ms, queue_wait=668ns, stream_wall=16.27ms, worker=16.20ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-1048576-50-20-1-1-repeat2-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=58.628417
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.00µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=1.08µs, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=83ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=4, input_batches=5, input_rows=1.05 M, observed_alloc_bytes=17.51 M, observed_alloc_calls=148, observed_count_reads=0, observed_launches=44, observed_readback_bytes=144, observed_readback_calls=36, observed_upload_bytes=16.78 M, observed_upload_calls=16, request_errors=0, requests_completed=5, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=4.38 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=58.73 M, execute_export=11.68ms, prepare=5.61ms, queue_wait=1.08µs, stream_wall=17.59ms, worker=17.46ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-1048576-50-20-1-1-repeat2-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=63.072709
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.08µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=917ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=84ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=16, input_batches=17, input_rows=1.05 M, observed_alloc_bytes=17.51 M, observed_alloc_calls=592, observed_count_reads=0, observed_launches=176, observed_readback_bytes=576, observed_readback_calls=144, observed_upload_bytes=16.78 M, observed_upload_calls=64, request_errors=0, requests_completed=17, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=20.14ms, prepare=5.86ms, queue_wait=1.67µs, stream_wall=26.57ms, worker=26.27ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-1048576-50-20-1-1-repeat2-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=60.279958
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.54µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=1.08µs, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=128, input_batches=129, input_rows=1.05 M, observed_alloc_bytes=17.52 M, observed_alloc_calls=4.74 K, observed_count_reads=0, observed_launches=1.41 K, observed_readback_bytes=4.61 K, observed_readback_calls=1.15 K, observed_upload_bytes=16.78 M, observed_upload_calls=512, request_errors=0, requests_completed=129, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=136.8 K, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=1.85 M, execute_export=127.00ms, prepare=8.60ms, queue_wait=10.71µs, stream_wall=137.58ms, worker=135.77ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-1048576-50-20-1-1-repeat3-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=56.746292
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.92µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=709ns, expr_1_eval_time=41ns, expr_2_eval_time=83ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=1, input_batches=2, input_rows=1.05 M, observed_alloc_bytes=17.51 M, observed_alloc_calls=48, observed_count_reads=0, observed_launches=16, observed_readback_bytes=36, observed_readback_calls=9, observed_upload_bytes=16.78 M, observed_upload_calls=4, request_errors=0, requests_completed=2, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=17.51 M, max_estimated_stages=18, max_output_capacity=1, max_requested_workspace_bytes=234.9 M, execute_export=9.22ms, prepare=5.92ms, queue_wait=1.00µs, stream_wall=15.55ms, worker=15.47ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-1048576-50-20-1-1-repeat3-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=56.985291
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.96µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=791ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=83ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=4, input_batches=5, input_rows=1.05 M, observed_alloc_bytes=17.51 M, observed_alloc_calls=148, observed_count_reads=0, observed_launches=44, observed_readback_bytes=144, observed_readback_calls=36, observed_upload_bytes=16.78 M, observed_upload_calls=16, request_errors=0, requests_completed=5, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=4.38 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=58.73 M, execute_export=12.82ms, prepare=5.61ms, queue_wait=1.75µs, stream_wall=18.73ms, worker=18.59ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-1048576-50-20-1-1-repeat3-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=64.799834
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.08µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=958ns, expr_1_eval_time=42ns, expr_2_eval_time=83ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=16, input_batches=17, input_rows=1.05 M, observed_alloc_bytes=17.51 M, observed_alloc_calls=592, observed_count_reads=0, observed_launches=176, observed_readback_bytes=576, observed_readback_calls=144, observed_upload_bytes=16.78 M, observed_upload_calls=64, request_errors=0, requests_completed=17, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=23.24ms, prepare=5.91ms, queue_wait=3.50µs, stream_wall=29.96ms, worker=29.61ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-1048576-50-20-1-1-repeat3-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "1048576", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=62.806375
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.75µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=1.29µs, expr_1_eval_time=42ns, expr_2_eval_time=167ns, expr_3_eval_time=42ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=128, input_batches=129, input_rows=1.05 M, observed_alloc_bytes=17.52 M, observed_alloc_calls=4.74 K, observed_count_reads=0, observed_launches=1.41 K, observed_readback_bytes=4.61 K, observed_readback_calls=1.15 K, observed_upload_bytes=16.78 M, observed_upload_calls=512, request_errors=0, requests_completed=129, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=136.8 K, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=1.85 M, execute_export=119.62ms, prepare=8.59ms, queue_wait=10.96µs, stream_wall=130.18ms, worker=128.39ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-2097152-50-20-1-1-repeat1-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=58.986375
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.25µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=792ns, expr_1_eval_time=41ns, expr_2_eval_time=125ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=2, input_batches=3, input_rows=2.10 M, observed_alloc_bytes=35.02 M, observed_alloc_calls=96, observed_count_reads=0, observed_launches=32, observed_readback_bytes=72, observed_readback_calls=18, observed_upload_bytes=33.55 M, observed_upload_calls=8, request_errors=0, requests_completed=3, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=17.51 M, max_estimated_stages=18, max_output_capacity=1, max_requested_workspace_bytes=234.9 M, execute_export=20.90ms, prepare=11.90ms, queue_wait=1.54µs, stream_wall=33.72ms, worker=33.59ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-2097152-50-20-1-1-repeat1-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=63.898500
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.08µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=917ns, expr_1_eval_time=41ns, expr_2_eval_time=125ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=8, input_batches=9, input_rows=2.10 M, observed_alloc_bytes=35.02 M, observed_alloc_calls=296, observed_count_reads=0, observed_launches=88, observed_readback_bytes=288, observed_readback_calls=72, observed_upload_bytes=33.55 M, observed_upload_calls=32, request_errors=0, requests_completed=9, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=4.38 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=58.73 M, execute_export=25.07ms, prepare=10.99ms, queue_wait=2.21µs, stream_wall=36.61ms, worker=36.39ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-2097152-50-20-1-1-repeat1-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=65.164917
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.38µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=1.08µs, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=83ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=32, input_batches=33, input_rows=2.10 M, observed_alloc_bytes=35.02 M, observed_alloc_calls=1.18 K, observed_count_reads=0, observed_launches=352, observed_readback_bytes=1.15 K, observed_readback_calls=288, observed_upload_bytes=33.55 M, observed_upload_calls=128, request_errors=0, requests_completed=33, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=38.16ms, prepare=11.59ms, queue_wait=3.09µs, stream_wall=51.04ms, worker=50.50ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-2097152-50-20-1-1-repeat1-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=56.249250
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=4.92µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=1.50µs, expr_1_eval_time=41ns, expr_2_eval_time=42ns, expr_3_eval_time=209ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=256, input_batches=257, input_rows=2.10 M, observed_alloc_bytes=35.03 M, observed_alloc_calls=9.47 K, observed_count_reads=0, observed_launches=2.82 K, observed_readback_bytes=9.22 K, observed_readback_calls=2.30 K, observed_upload_bytes=33.55 M, observed_upload_calls=1.02 K, request_errors=0, requests_completed=257, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=136.8 K, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=1.85 M, execute_export=264.32ms, prepare=16.94ms, queue_wait=21.27µs, stream_wall=285.22ms, worker=281.60ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-2097152-50-20-1-1-repeat2-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=63.677958
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.12µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=834ns, expr_1_eval_time=41ns, expr_2_eval_time=84ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=2, input_batches=3, input_rows=2.10 M, observed_alloc_bytes=35.02 M, observed_alloc_calls=96, observed_count_reads=0, observed_launches=32, observed_readback_bytes=72, observed_readback_calls=18, observed_upload_bytes=33.55 M, observed_upload_calls=8, request_errors=0, requests_completed=3, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=17.51 M, max_estimated_stages=18, max_output_capacity=1, max_requested_workspace_bytes=234.9 M, execute_export=21.42ms, prepare=12.01ms, queue_wait=1.00µs, stream_wall=34.42ms, worker=34.30ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-2097152-50-20-1-1-repeat2-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=63.808000
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.96µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=1.04µs, expr_1_eval_time=42ns, expr_2_eval_time=41ns, expr_3_eval_time=41ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=8, input_batches=9, input_rows=2.10 M, observed_alloc_bytes=35.02 M, observed_alloc_calls=296, observed_count_reads=0, observed_launches=88, observed_readback_bytes=288, observed_readback_calls=72, observed_upload_bytes=33.55 M, observed_upload_calls=32, request_errors=0, requests_completed=9, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=4.38 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=58.73 M, execute_export=23.69ms, prepare=11.06ms, queue_wait=2.00µs, stream_wall=35.36ms, worker=35.14ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-2097152-50-20-1-1-repeat2-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=60.087916
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.17µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=1.04µs, expr_1_eval_time=41ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=32, input_batches=33, input_rows=2.10 M, observed_alloc_bytes=35.02 M, observed_alloc_calls=1.18 K, observed_count_reads=0, observed_launches=352, observed_readback_bytes=1.15 K, observed_readback_calls=288, observed_upload_bytes=33.55 M, observed_upload_calls=128, request_errors=0, requests_completed=33, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=41.00ms, prepare=11.66ms, queue_wait=3.50µs, stream_wall=53.90ms, worker=53.34ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-2097152-50-20-1-1-repeat2-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=61.719500
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=5.21µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=1.67µs, expr_1_eval_time=41ns, expr_2_eval_time=41ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=256, input_batches=257, input_rows=2.10 M, observed_alloc_bytes=35.03 M, observed_alloc_calls=9.47 K, observed_count_reads=0, observed_launches=2.82 K, observed_readback_bytes=9.22 K, observed_readback_calls=2.30 K, observed_upload_bytes=33.55 M, observed_upload_calls=1.02 K, request_errors=0, requests_completed=257, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=136.8 K, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=1.85 M, execute_export=244.54ms, prepare=17.01ms, queue_wait=26.71µs, stream_wall=265.46ms, worker=261.90ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-2097152-50-20-1-1-repeat3-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=58.498834
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.79µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=792ns, expr_1_eval_time=41ns, expr_2_eval_time=41ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=2, input_batches=3, input_rows=2.10 M, observed_alloc_bytes=35.02 M, observed_alloc_calls=96, observed_count_reads=0, observed_launches=32, observed_readback_bytes=72, observed_readback_calls=18, observed_upload_bytes=33.55 M, observed_upload_calls=8, request_errors=0, requests_completed=3, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=17.51 M, max_estimated_stages=18, max_output_capacity=1, max_requested_workspace_bytes=234.9 M, execute_export=19.76ms, prepare=12.11ms, queue_wait=1.46µs, stream_wall=33.01ms, worker=32.88ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-2097152-50-20-1-1-repeat3-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=61.720209
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.46µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=1.21µs, expr_1_eval_time=41ns, expr_2_eval_time=41ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=8, input_batches=9, input_rows=2.10 M, observed_alloc_bytes=35.02 M, observed_alloc_calls=296, observed_count_reads=0, observed_launches=88, observed_readback_bytes=288, observed_readback_calls=72, observed_upload_bytes=33.55 M, observed_upload_calls=32, request_errors=0, requests_completed=9, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=4.38 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=58.73 M, execute_export=23.54ms, prepare=11.02ms, queue_wait=2.21µs, stream_wall=35.14ms, worker=34.93ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-2097152-50-20-1-1-repeat3-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=62.083625
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=3.21µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=917ns, expr_1_eval_time=41ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=32, input_batches=33, input_rows=2.10 M, observed_alloc_bytes=35.02 M, observed_alloc_calls=1.18 K, observed_count_reads=0, observed_launches=352, observed_readback_bytes=1.15 K, observed_readback_calls=288, observed_upload_bytes=33.55 M, observed_upload_calls=128, request_errors=0, requests_completed=33, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=42.37ms, prepare=11.70ms, queue_wait=3.92µs, stream_wall=55.10ms, worker=54.55ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-2097152-50-20-1-1-repeat3-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "2097152", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 2097152, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=65.380541
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=4.71µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=1.71µs, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=2097152, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=256, input_batches=257, input_rows=2.10 M, observed_alloc_bytes=35.03 M, observed_alloc_calls=9.47 K, observed_count_reads=0, observed_launches=2.82 K, observed_readback_bytes=9.22 K, observed_readback_calls=2.30 K, observed_upload_bytes=33.55 M, observed_upload_calls=1.02 K, request_errors=0, requests_completed=257, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=136.8 K, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=1.85 M, execute_export=267.88ms, prepare=16.84ms, queue_wait=21.97µs, stream_wall=288.71ms, worker=285.07ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-65536-50-20-1-1-repeat1-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=63.017625
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.21µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=208ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=1, input_batches=2, input_rows=65.54 K, observed_alloc_bytes=1.09 M, observed_alloc_calls=37, observed_count_reads=0, observed_launches=11, observed_readback_bytes=36, observed_readback_calls=9, observed_upload_bytes=1.05 M, observed_upload_calls=4, request_errors=0, requests_completed=2, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=1.53ms, prepare=402.33µs, queue_wait=374ns, stream_wall=2.01ms, worker=1.96ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-65536-50-20-1-1-repeat1-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=58.205250
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.67µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=292ns, expr_1_eval_time=42ns, expr_2_eval_time=41ns, expr_3_eval_time=41ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=1, input_batches=2, input_rows=65.54 K, observed_alloc_bytes=1.09 M, observed_alloc_calls=37, observed_count_reads=0, observed_launches=11, observed_readback_bytes=36, observed_readback_calls=9, observed_upload_bytes=1.05 M, observed_upload_calls=4, request_errors=0, requests_completed=2, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=1.42ms, prepare=405.96µs, queue_wait=334ns, stream_wall=1.89ms, worker=1.83ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-65536-50-20-1-1-repeat1-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=57.266333
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.29µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=208ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=1, input_batches=2, input_rows=65.54 K, observed_alloc_bytes=1.09 M, observed_alloc_calls=37, observed_count_reads=0, observed_launches=11, observed_readback_bytes=36, observed_readback_calls=9, observed_upload_bytes=1.05 M, observed_upload_calls=4, request_errors=0, requests_completed=2, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=1.37ms, prepare=396.08µs, queue_wait=291ns, stream_wall=1.82ms, worker=1.77ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-65536-50-20-1-1-repeat1-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=61.943625
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.17µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=209ns, expr_1_eval_time=83ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=8, input_batches=9, input_rows=65.54 K, observed_alloc_bytes=1.09 M, observed_alloc_calls=296, observed_count_reads=0, observed_launches=88, observed_readback_bytes=288, observed_readback_calls=72, observed_upload_bytes=1.05 M, observed_upload_calls=32, request_errors=0, requests_completed=9, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=136.8 K, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=1.85 M, execute_export=7.97ms, prepare=582.92µs, queue_wait=1.04µs, stream_wall=8.71ms, worker=8.56ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-65536-50-20-1-1-repeat2-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=61.619458
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.75µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=542ns, expr_1_eval_time=41ns, expr_2_eval_time=83ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=1, input_batches=2, input_rows=65.54 K, observed_alloc_bytes=1.09 M, observed_alloc_calls=37, observed_count_reads=0, observed_launches=11, observed_readback_bytes=36, observed_readback_calls=9, observed_upload_bytes=1.05 M, observed_upload_calls=4, request_errors=0, requests_completed=2, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=1.48ms, prepare=393.58µs, queue_wait=416ns, stream_wall=1.94ms, worker=1.89ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-65536-50-20-1-1-repeat2-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=60.279458
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.96µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=292ns, expr_1_eval_time=41ns, expr_2_eval_time=41ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=1, input_batches=2, input_rows=65.54 K, observed_alloc_bytes=1.09 M, observed_alloc_calls=37, observed_count_reads=0, observed_launches=11, observed_readback_bytes=36, observed_readback_calls=9, observed_upload_bytes=1.05 M, observed_upload_calls=4, request_errors=0, requests_completed=2, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=1.27ms, prepare=400.50µs, queue_wait=416ns, stream_wall=1.76ms, worker=1.71ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-65536-50-20-1-1-repeat2-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=59.039959
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.42µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=250ns, expr_1_eval_time=41ns, expr_2_eval_time=41ns, expr_3_eval_time=83ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=1, input_batches=2, input_rows=65.54 K, observed_alloc_bytes=1.09 M, observed_alloc_calls=37, observed_count_reads=0, observed_launches=11, observed_readback_bytes=36, observed_readback_calls=9, observed_upload_bytes=1.05 M, observed_upload_calls=4, request_errors=0, requests_completed=2, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=1.11ms, prepare=402.04µs, queue_wait=334ns, stream_wall=1.57ms, worker=1.52ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-65536-50-20-1-1-repeat2-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=60.606958
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=2.00µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=667ns, expr_1_eval_time=84ns, expr_2_eval_time=42ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=8, input_batches=9, input_rows=65.54 K, observed_alloc_bytes=1.09 M, observed_alloc_calls=296, observed_count_reads=0, observed_launches=88, observed_readback_bytes=288, observed_readback_calls=72, observed_upload_bytes=1.05 M, observed_upload_calls=32, request_errors=0, requests_completed=9, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=136.8 K, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=1.85 M, execute_export=7.52ms, prepare=594.67µs, queue_wait=833ns, stream_wall=8.30ms, worker=8.13ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-65536-50-20-1-1-repeat3-batch1048576.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "1048576"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=60.796667
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.46µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=125ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=1, input_batches=2, input_rows=65.54 K, observed_alloc_bytes=1.09 M, observed_alloc_calls=37, observed_count_reads=0, observed_launches=11, observed_readback_bytes=36, observed_readback_calls=9, observed_upload_bytes=1.05 M, observed_upload_calls=4, request_errors=0, requests_completed=2, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=1.57ms, prepare=399.04µs, queue_wait=334ns, stream_wall=2.04ms, worker=1.99ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-65536-50-20-1-1-repeat3-batch262144.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "262144"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=59.357541
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.12µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=291ns, expr_1_eval_time=42ns, expr_2_eval_time=83ns, expr_3_eval_time=41ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=1, input_batches=2, input_rows=65.54 K, observed_alloc_bytes=1.09 M, observed_alloc_calls=37, observed_count_reads=0, observed_launches=11, observed_readback_bytes=36, observed_readback_calls=9, observed_upload_bytes=1.05 M, observed_upload_calls=4, request_errors=0, requests_completed=2, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=1.48ms, prepare=398.12µs, queue_wait=334ns, stream_wall=1.95ms, worker=1.90ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-65536-50-20-1-1-repeat3-batch65536.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "65536"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=57.959542
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.21µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=125ns, expr_1_eval_time=42ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=41ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=1, input_batches=2, input_rows=65.54 K, observed_alloc_bytes=1.09 M, observed_alloc_calls=37, observed_count_reads=0, observed_launches=11, observed_readback_bytes=36, observed_readback_calls=9, observed_upload_bytes=1.05 M, observed_upload_calls=4, request_errors=0, requests_completed=2, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=1.09 M, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=14.69 M, execute_export=2.28ms, prepare=409.75µs, queue_wait=168ns, stream_wall=2.76ms, worker=2.71ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]
+
+# metal-sql-aggregate-65536-50-20-1-1-repeat3-batch8192.log
+command=["/private/tmp/cuberel-f8-release/release/examples/sql_acceptance", "metal", "sql", "aggregate", "65536", "50", "20", "1", "1", "10", "8192"]
+sql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)
+case=Case { rows: 65536, pass: 50, nulls: 20, batches: 1, partitions: 1 }
+backend=metal path=sql init_ms=63.440875
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }
+    DataSourceExec: partitions=1, partition_sizes=[2]
+
+ProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi], metrics=[output_rows=1, elapsed_compute=1.75µs, output_bytes=32.0 B, output_batches=1, expr_0_eval_time=375ns, expr_1_eval_time=41ns, expr_2_eval_time=42ns, expr_3_eval_time=42ns, expr_4_eval_time=42ns]
+  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=65536, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 268435456, max_host_bytes: 536870912, max_requests: 16, max_streams: 64 }, metrics=[output_rows=1, output_batches=1, define_calls=0, fused_requests=8, input_batches=9, input_rows=65.54 K, observed_alloc_bytes=1.09 M, observed_alloc_calls=296, observed_count_reads=0, observed_launches=88, observed_readback_bytes=288, observed_readback_calls=72, observed_upload_bytes=1.05 M, observed_upload_calls=32, request_errors=0, requests_completed=9, streams_canceled=0, streams_completed=1, streams_failed=0, unfused_requests=1, active_streams=0, max_estimated_device_bytes=136.8 K, max_estimated_stages=13, max_output_capacity=1, max_requested_workspace_bytes=1.85 M, execute_export=8.10ms, prepare=587.33µs, queue_wait=1.17µs, stream_wall=8.86ms, worker=8.70ms]
+    DataSourceExec: partitions=1, partition_sizes=[2], metrics=[]

@@ -2,16 +2,16 @@
 #[path = "support/sql_acceptance.rs"]
 mod support;
 use cuberel::{
+    datafusion::{register, AdapterOptions, CubeAggregateExec, CubeExec, SharedResources},
     ExecutionStats, Executor,
-    datafusion::{AdapterOptions, CubeAggregateExec, CubeExec, SharedResources, register},
 };
 use datafusion::{
     execution::session_state::SessionStateBuilder,
-    physical_plan::{ExecutionPlan, collect, display::DisplayableExecutionPlan, displayable},
+    physical_plan::{collect, display::DisplayableExecutionPlan, displayable, ExecutionPlan},
     prelude::{SessionConfig, SessionContext},
 };
 use std::{sync::Arc, time::Instant};
-use support::{Case, Fixture, Result, Workload, compare};
+use support::{compare, Case, Fixture, Result, Workload};
 
 #[cfg(any(feature = "cpu", feature = "metal"))]
 fn executor(backend: &str) -> Result<Option<Executor>> {
@@ -63,6 +63,29 @@ fn metric(p: &Arc<dyn ExecutionPlan>, name: &str) -> usize {
     };
     local + p.children().iter().map(|c| metric(c, name)).sum::<usize>()
 }
+fn optional_metric(p: &Arc<dyn ExecutionPlan>, name: &str) -> Option<usize> {
+    let local = if p.is::<CubeExec>() || p.is::<CubeAggregateExec>() {
+        p.metrics().and_then(|m| {
+            let values = m
+                .iter()
+                .filter(|m| m.value().name() == name)
+                .map(|m| m.value().as_usize())
+                .collect::<Vec<_>>();
+            (!values.is_empty()).then(|| values.into_iter().sum())
+        })
+    } else {
+        None
+    };
+    let mut total = local.unwrap_or(0);
+    let mut found = local.is_some();
+    for child in p.children() {
+        if let Some(value) = optional_metric(child, name) {
+            total += value;
+            found = true;
+        }
+    }
+    found.then_some(total)
+}
 fn max_metric(p: &Arc<dyn ExecutionPlan>, name: &str) -> usize {
     let local = if p.is::<CubeExec>() || p.is::<CubeAggregateExec>() {
         p.metrics()
@@ -107,8 +130,8 @@ fn dsl(
 ) -> Result<(Vec<arrow_array::RecordBatch>, f64, f64, u64)> {
     use arrow_array::{Int32Array, Int64Array, RecordBatch};
     use cuberel::{
-        Aggregate, AggregateValue, DataType, Field, Parameters, Pipeline, Schema,
-        arrow::ArrowBatch, col, param, prepare,
+        arrow::ArrowBatch, col, param, prepare, Aggregate, AggregateValue, DataType, Field,
+        Parameters, Pipeline, Schema,
     };
     let start = Instant::now();
     let schema = Schema::from_fields(
@@ -236,8 +259,8 @@ fn dsl(
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
-    if args.len() != 9 {
-        return Err("usage: sql_acceptance datafusion|cpu|metal sql|dsl project|aggregate|mixed rows pass_percent null_percent batches partitions warm_samples".into());
+    if args.len() != 9 && args.len() != 10 {
+        return Err("usage: sql_acceptance datafusion|cpu|metal sql|dsl project|aggregate|mixed rows pass_percent null_percent batches partitions warm_samples [session_batch_size]".into());
     }
     let backend = &args[0];
     let path = &args[1];
@@ -248,6 +271,17 @@ async fn main() -> Result<()> {
     if path == "dsl" && (backend == "datafusion" || workload == Workload::Mixed) {
         return Err("DSL requires a device and project/aggregate workload".into());
     }
+    let requested_batch_size = args
+        .get(9)
+        .map(|value| value.parse::<usize>())
+        .transpose()?;
+    if requested_batch_size == Some(0) {
+        return Err("session_batch_size must be positive".into());
+    }
+    if path == "dsl" && requested_batch_size.is_some() {
+        return Err("session_batch_size applies only to SQL; omit it for DSL".into());
+    }
+    let session_batch_size = requested_batch_size.unwrap_or(8192);
     let case = Case {
         rows: args[3].parse()?,
         pass: args[4].parse()?,
@@ -267,7 +301,7 @@ async fn main() -> Result<()> {
     let sql = workload.sql(case.pass);
     eprintln!("sql={sql}\ncase={case:?}\nbackend={backend} path={path} init_ms={init_ms:.6}");
     println!(
-        "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes"
+        "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,session_batch_size,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes,input_batches,completed_requests,actual_fused_requests,actual_unfused_requests"
     );
     for sample in 0..=samples {
         let before = e.as_ref().map(Executor::stats).unwrap_or_default();
@@ -286,8 +320,11 @@ async fn main() -> Result<()> {
                 .map(|e| AdapterOptions::with_resources(e.clone(), resources.clone()))
                 .unwrap_or_default();
             let start = Instant::now();
-            let builder = SessionStateBuilder::new_with_default_features()
-                .with_config(SessionConfig::new().with_target_partitions(case.partitions));
+            let builder = SessionStateBuilder::new_with_default_features().with_config(
+                SessionConfig::new()
+                    .with_target_partitions(case.partitions)
+                    .with_batch_size(session_batch_size),
+            );
             let ctx = SessionContext::new_with_state(register(builder, options.clone()).build());
             f.register(&ctx)?;
             let plan = ctx.sql(&sql).await?.create_physical_plan().await?;
@@ -354,14 +391,29 @@ async fn main() -> Result<()> {
         let peak_host = snapshot
             .map(|s| s.peak_host_bytes.to_string())
             .unwrap_or_default();
+        let runtime_metrics = plan.as_ref().map(|plan| {
+            [
+                "input_batches",
+                "requests_completed",
+                "fused_requests",
+                "unfused_requests",
+            ]
+            .map(|name| {
+                optional_metric(plan, name)
+                    .map(|value| value.to_string())
+                    .unwrap_or_default()
+            })
+        });
+        let runtime_metrics = runtime_metrics.unwrap_or_default();
         println!(
-            "{backend},{path},{},{},{},{},{},{},{},{sample},{:.6},{prepare_ms:.6},{execute_ms:.6},{:.6},{output_rows},{},{},{},{},{},{},{},{},{definitions},{},{},{},{},{peak_device},{peak_host},{max_request}",
+            "{backend},{path},{},{},{},{},{},{},{},{},{sample},{:.6},{prepare_ms:.6},{execute_ms:.6},{:.6},{output_rows},{},{},{},{},{},{},{},{},{definitions},{},{},{},{},{peak_device},{peak_host},{max_request},{},{},{},{}",
             args[2],
             case.rows,
             case.pass,
             case.nulls,
             case.batches,
             case.partitions,
+            if path == "sql" { session_batch_size.to_string() } else { String::new() },
             if sample == 0 { "first" } else { "warm" },
             if sample == 0 { init_ms } else { 0. },
             prepare_ms + execute_ms,
@@ -376,7 +428,11 @@ async fn main() -> Result<()> {
             times[0],
             times[1],
             times[2],
-            times[3]
+            times[3],
+            runtime_metrics[0],
+            runtime_metrics[1],
+            runtime_metrics[2],
+            runtime_metrics[3]
         );
     }
     Ok(())
