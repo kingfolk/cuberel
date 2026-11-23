@@ -48,3 +48,7 @@ required-features = ["datafusion"]
 [[example]]
 name = "datafusion_diagnostics"
 required-features = ["datafusion"]
+
+[[example]]
+name = "sql_acceptance"
+required-features = ["datafusion"]

@@ -30,6 +30,9 @@ The [SQL lifecycle contract](docs/sql-lifecycle.md) specifies shared resource
 limits, consumer-owned output reservations, backpressure and cancellation drain.
 See [SQL diagnostics](docs/sql-diagnostics.md) for placement reports, CPU-only and
 required-candidate modes, EXPLAIN fields and measured fragment counters/timings.
+The [SQL acceptance harness](docs/sql-acceptance.md) compares complete SQL and
+DSL host-input paths against DataFusion CPU, with raw samples, actual plans and
+[measured support boundaries](docs/benchmarks/sql-m3-acceptance.md).
 
 Supported contiguous filter/project chains share one device upload and retain
 selection state until the fragment exports Arrow. Pure rename/reorder projections
