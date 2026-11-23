@@ -117,3 +117,7 @@ passed. Both device examples observed 32 upload bytes, 28 readback bytes and
 5 launches; CPU-only mode observed zero device work. Output release returned
 all shared host/device reservations to zero. The known macOS unwind-table linker
 warning remains nonfatal.
+
+The [explicit batch policy](sql-batch-policy.md) is shown in the placement report
+and Cube EXPLAIN nodes. `max_input_batch_rows` records a per-partition actual
+maximum; the configured source target is not a prediction of every request size.

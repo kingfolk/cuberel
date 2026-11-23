@@ -32,6 +32,7 @@ pub(crate) struct Observation {
     workspace: Gauge,
     stages: Gauge,
     output_capacity: Gauge,
+    input_batch_rows: Gauge,
     set: ExecutionPlanMetricsSet,
     partition: usize,
     fallback: Mutex<BTreeMap<&'static str, Count>>,
@@ -97,6 +98,7 @@ impl Observation {
             workspace: MetricBuilder::new(set).gauge("max_requested_workspace_bytes", partition),
             stages: MetricBuilder::new(set).gauge("max_estimated_stages", partition),
             output_capacity: MetricBuilder::new(set).gauge("max_output_capacity", partition),
+            input_batch_rows: MetricBuilder::new(set).gauge("max_input_batch_rows", partition),
             set: set.clone(),
             partition,
             fallback: Mutex::new(BTreeMap::new()),
@@ -106,6 +108,7 @@ impl Observation {
         self.counts[name].add(usize::try_from(value).unwrap_or(usize::MAX));
     }
     pub(crate) fn input(&self, rows: usize) {
+        self.input_batch_rows.set_max(rows);
         self.add("input_rows", rows as u64);
         self.add("input_batches", 1);
     }

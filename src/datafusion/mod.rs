@@ -3,6 +3,7 @@
 //! Registration preserves DataFusion's default planning pipeline. Only an
 //! explicitly supplied executor enables supported device fragments.
 
+mod batch_policy;
 mod capability;
 mod diagnostics;
 mod exec;
@@ -10,6 +11,7 @@ mod fragment;
 mod global;
 mod observation;
 mod resources;
+pub use batch_policy::{BatchPolicy, BatchPolicyError};
 pub use capability::{TranslatedExpression, Unsupported, translate_expression};
 pub use diagnostics::{
     Placement, PlacementDecision, PlacementMode, PlacementReport, placement_report,
@@ -32,6 +34,7 @@ use ::datafusion::{
 #[derive(Clone, Debug, Default)]
 pub struct AdapterOptions {
     pub enabled: bool,
+    pub(crate) batch_policy: Option<BatchPolicy>,
     pub(crate) engine: Option<Arc<exec::Engine>>,
     pub(crate) placement_mode: PlacementMode,
 }
@@ -41,6 +44,7 @@ impl AdapterOptions {
     pub fn planning_only() -> Self {
         Self {
             enabled: true,
+            batch_policy: None,
             engine: None,
             placement_mode: PlacementMode::OptIn,
         }
@@ -55,9 +59,21 @@ impl AdapterOptions {
     pub fn with_resources(executor: crate::Executor, resources: SharedResources) -> Self {
         Self {
             enabled: true,
+            batch_policy: None,
             engine: Some(Arc::new(exec::Engine::with_resources(executor, resources))),
             placement_mode: PlacementMode::OptIn,
         }
+    }
+    /// Explicitly configure source granularity and cap actual device-worker input rows.
+    /// Does not enable a disabled adapter or coalesce/split any input internally.
+    /// Registration changes the session batch size, including CPU operators/sources.
+    /// Rebuild queries to apply it; already-rewritten plans retain their engine.
+    pub fn with_batch_policy(mut self, policy: BatchPolicy) -> Self {
+        self.batch_policy = Some(policy);
+        if let Some(engine) = &mut self.engine {
+            Arc::make_mut(engine).batch_policy = Some(policy);
+        }
+        self
     }
     pub fn with_placement_mode(mut self, mode: PlacementMode) -> Self {
         self.placement_mode = mode;
@@ -67,9 +83,13 @@ impl AdapterOptions {
 
 /// Add the adapter after the builder's standard physical optimizer rules, then
 /// validate the resulting properties. Does not replace the default rule set.
-pub fn register(builder: SessionStateBuilder, options: AdapterOptions) -> SessionStateBuilder {
+pub fn register(mut builder: SessionStateBuilder, options: AdapterOptions) -> SessionStateBuilder {
     if !options.enabled {
         return builder;
+    }
+    if let Some(policy) = options.batch_policy {
+        let config = builder.config().take().unwrap_or_default();
+        builder = builder.with_config(config.with_batch_size(policy.source_rows()));
     }
     builder
         .with_physical_optimizer_rule(Arc::new(CubeRule { options }))

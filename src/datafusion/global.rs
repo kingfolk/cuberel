@@ -547,13 +547,14 @@ impl DisplayAs for CubeAggregateExec {
     fn fmt_as(&self, _kind: DisplayFormatType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "CubeAggregateExec: global=true, aggregates={}, filters={}, input_upper_bound={}, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}",
+            "CubeAggregateExec: global=true, aggregates={}, filters={}, input_upper_bound={}, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}, batch_policy={:?}",
             self.plan.kinds.len(),
             self.plan.inspection.filters,
             self.plan.inspection.input_upper_bound,
             self.id,
             self.engine.executor.client.name(),
-            self.engine.resources.limits()
+            self.engine.resources.limits(),
+            self.engine.batch_policy
         )
     }
 }

@@ -6,7 +6,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use arrow_schema::{DataType, Field, Schema};
     use cuberel::{
         Executor,
-        datafusion::{AdapterOptions, register},
+        datafusion::{AdapterOptions, BatchPolicy, register},
     };
     use datafusion::{
         datasource::MemTable,
@@ -26,9 +26,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let executor =
         Executor::with_cube_size(device.client(), if backend == "cpu" { 8 } else { 64 })?;
     let config = SessionConfig::new().with_target_partitions(2);
+    let mut options = AdapterOptions::with_executor(executor.clone());
+    if let Some(rows) = std::env::args().nth(2) {
+        let rows = rows.parse::<usize>()?;
+        options = options.with_batch_policy(BatchPolicy::new(rows, rows)?);
+    }
     let state = register(
         SessionStateBuilder::new_with_default_features().with_config(config),
-        AdapterOptions::with_executor(executor.clone()),
+        options,
     )
     .build();
     let ctx = SessionContext::new_with_state(state);

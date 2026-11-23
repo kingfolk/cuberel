@@ -1,0 +1,53 @@
+{
+  "created_utc": "2026-11-23T01:54:07.851646+00:00",
+  "command": [
+    "scripts/sql_acceptance.py",
+    "--binary",
+    "/private/tmp/cuberel-f8-release/release/examples/sql_acceptance",
+    "--out",
+    "/private/tmp/cuberel-m4-batch-study",
+    "--batch-study",
+    "--backends",
+    "datafusion",
+    "metal",
+    "--batch-sizes",
+    "8192",
+    "65536",
+    "262144",
+    "1048576",
+    "--warm",
+    "10",
+    "--repeats",
+    "3"
+  ],
+  "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
+  "hardware": "Apple M1\n17179869184",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t15.5\nBuildVersion:\t\t24F74",
+  "rust": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+  "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+  "base_commit": "6ce1953894ef19fda5dad75cf24055388dd5784c",
+  "working_diff": "examples/sql_acceptance.rs | 80 +++++++++++++++++++++++++++++++------\n scripts/sql_acceptance.py  | 98 ++++++++++++++++++++++++++++++++++------------\n 2 files changed, 142 insertions(+), 36 deletions(-)",
+  "working_status": "M examples/sql_acceptance.rs\n M scripts/sql_acceptance.py\n?? docs/sql-batch-study.md\n?? tests/datafusion_batch_sizes.rs",
+  "source_sha256": {
+    "examples/sql_acceptance.rs": "2dfcbc2bc88802238fbaf7a13b86ccbfa1f7306b67c2e0f8261917c653a75006",
+    "examples/support/sql_acceptance.rs": "3e1eff82a98e7843dd04f80a9b605ec46e6ce7a151d8830f15955392ad3125db",
+    "scripts/sql_acceptance.py": "f927829960564220c28b4cc02e62d34f0f1b4dab62b160fa9b6bdea5447b44a0",
+    "Cargo.toml": "a7a7f7eeee0680aad69c846fb27a828aa686209dd386118955c78605c8f081bd",
+    "Cargo.lock": "ec320e17d2d7fd62b2532fbc005f5d5fa80bd4e6d42329e72f748949011f0b49"
+  },
+  "binary_sha256": "8250edadab172f30085c3ba1352f8629afabcad03ea36f85f1e4044bf73ca9d1",
+  "binary": "/private/tmp/cuberel-f8-release/release/examples/sql_acceptance",
+  "profile": "release (build command recorded in report)",
+  "environment": {},
+  "warm_samples": 10,
+  "repeats": 3,
+  "batch_sizes": [
+    8192,
+    65536,
+    262144,
+    1048576
+  ],
+  "batch_study": true,
+  "note": "sequential processes; OS/driver caches not cleared; no concurrent queries",
+  "archive_format": "CSV record delimiters normalized from CRLF to LF; parsed cells unchanged; per-process command/plan logs combined in filename order."
+}

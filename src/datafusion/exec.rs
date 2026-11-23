@@ -33,7 +33,9 @@ use crate::Executor;
 
 /// An adapter instance serializes its device requests across partitions/queries.
 /// The permit belongs to the blocking worker through completion, even after drop.
+#[derive(Clone)]
 pub(crate) struct Engine {
+    pub(crate) batch_policy: Option<super::BatchPolicy>,
     pub(crate) executor: Executor,
     pub(crate) gate: Arc<Semaphore>,
     pub(crate) resources: SharedResources,
@@ -45,6 +47,7 @@ impl Engine {
     }
     pub(crate) fn with_resources(executor: Executor, resources: SharedResources) -> Self {
         Self {
+            batch_policy: None,
             executor,
             gate: resources.gate(),
             resources,
@@ -90,6 +93,11 @@ impl Engine {
             }
             e
         };
+        if let Some(policy) = self.batch_policy {
+            policy
+                .check(batch.num_rows())
+                .map_err(|e| failure(DataFusionError::External(Box::new(e))))?;
+        }
         let mut lease = self.resources.request(&batch, scratch).map_err(failure)?;
         let queue_timer = observation.as_ref().map(|o| o.queue.timer());
         let permit = self
@@ -199,7 +207,7 @@ impl DisplayAs for CubeExec {
     fn fmt_as(&self, _kind: DisplayFormatType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "CubeExec: filter={}, filters={}, outputs={}, nodes={}, boundary=[{}], semantic_profile=df55-i32-v1, max_in_flight=1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}",
+            "CubeExec: filter={}, filters={}, outputs={}, nodes={}, boundary=[{}], semantic_profile=df55-i32-v1, max_in_flight=1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}, batch_policy={:?}",
             self.fragment.filter_count != 0,
             self.fragment.filter_count,
             self.schema().fields().len(),
@@ -207,7 +215,8 @@ impl DisplayAs for CubeExec {
             self.region.boundary,
             self.id,
             self.engine.executor.client.name(),
-            self.engine.resources.limits()
+            self.engine.resources.limits(),
+            self.engine.batch_policy
         )
     }
 }
