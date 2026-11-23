@@ -92,3 +92,7 @@ pre-upload byte rejection, separate-adapter sharing, slow consumers, canceled
 waiters, latched detached workers, panic drain/reuse, and real CPU/native Metal
 filter/global/exchange paths. A worker latch verifies ownership without relying
 on a particular kernel duration or unsafe memory access.
+
+An optional [batch policy](sql-batch-policy.md) checks actual worker input rows
+before workspace reservation/upload. It does not rebatch input or weaken byte
+admission, output ownership or cancellation/drain guarantees.
