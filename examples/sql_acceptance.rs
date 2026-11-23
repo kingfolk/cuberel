@@ -2,16 +2,16 @@
 #[path = "support/sql_acceptance.rs"]
 mod support;
 use cuberel::{
-    datafusion::{register, AdapterOptions, CubeAggregateExec, CubeExec, SharedResources},
     ExecutionStats, Executor,
+    datafusion::{AdapterOptions, CubeAggregateExec, CubeExec, SharedResources, register},
 };
 use datafusion::{
     execution::session_state::SessionStateBuilder,
-    physical_plan::{collect, display::DisplayableExecutionPlan, displayable, ExecutionPlan},
+    physical_plan::{ExecutionPlan, collect, display::DisplayableExecutionPlan, displayable},
     prelude::{SessionConfig, SessionContext},
 };
 use std::{sync::Arc, time::Instant};
-use support::{compare, Case, Fixture, Result, Workload};
+use support::{Case, Fixture, Result, Workload, compare};
 
 #[cfg(any(feature = "cpu", feature = "metal"))]
 fn executor(backend: &str) -> Result<Option<Executor>> {
@@ -130,8 +130,8 @@ fn dsl(
 ) -> Result<(Vec<arrow_array::RecordBatch>, f64, f64, u64)> {
     use arrow_array::{Int32Array, Int64Array, RecordBatch};
     use cuberel::{
-        arrow::ArrowBatch, col, param, prepare, Aggregate, AggregateValue, DataType, Field,
-        Parameters, Pipeline, Schema,
+        Aggregate, AggregateValue, DataType, Field, Parameters, Pipeline, Schema,
+        arrow::ArrowBatch, col, param, prepare,
     };
     let start = Instant::now();
     let schema = Schema::from_fields(
@@ -413,7 +413,11 @@ async fn main() -> Result<()> {
             case.nulls,
             case.batches,
             case.partitions,
-            if path == "sql" { session_batch_size.to_string() } else { String::new() },
+            if path == "sql" {
+                session_batch_size.to_string()
+            } else {
+                String::new()
+            },
             if sample == 0 { "first" } else { "warm" },
             if sample == 0 { init_ms } else { 0. },
             prepare_ms + execute_ms,
