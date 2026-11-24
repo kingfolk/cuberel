@@ -1,4 +1,6 @@
 //! One fresh-process F8 case. stdout=CSV; stderr=plans/placement/metrics.
+#[path = "support/sql_acceptance_limits.rs"]
+mod limits;
 #[path = "support/sql_acceptance.rs"]
 mod support;
 use cuberel::{
@@ -258,15 +260,24 @@ fn dsl(
 }
 #[tokio::main]
 async fn main() -> Result<()> {
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    let all_args = std::env::args().skip(1).collect::<Vec<_>>();
+    let flag_start = all_args
+        .iter()
+        .position(|arg| arg.starts_with("--"))
+        .unwrap_or(all_args.len());
+    let (args, flags) = all_args.split_at(flag_start);
     if !(9..=11).contains(&args.len()) {
-        return Err("usage: sql_acceptance datafusion|cpu|metal sql|dsl project|aggregate|mixed rows pass_percent null_percent batches partitions warm_samples [session_batch_size [aggregate_readback_mode]]".into());
+        return Err("usage: sql_acceptance datafusion|cpu|metal sql|dsl project|aggregate|mixed rows pass_percent null_percent batches partitions warm_samples [session_batch_size [aggregate_readback_mode]] [--shared-host-bytes N] [--shared-device-bytes N]".into());
     }
+    let limits = limits::shared_limits(flags)?;
     let backend = &args[0];
     let path = &args[1];
     let workload = Workload::parse(&args[2])?;
     if path != "sql" && path != "dsl" {
         return Err("path must be sql or dsl".into());
+    }
+    if path == "dsl" && !flags.is_empty() {
+        return Err("shared budget flags apply only to SQL; DSL has no shared controller".into());
     }
     if path == "dsl" && (backend == "datafusion" || workload == Workload::Mixed) {
         return Err("DSL requires a device and project/aggregate workload".into());
@@ -317,7 +328,7 @@ async fn main() -> Result<()> {
     let sql = workload.sql(case.pass);
     eprintln!("sql={sql}\ncase={case:?}\nbackend={backend} path={path} init_ms={init_ms:.6}");
     println!(
-        "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,session_batch_size,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes,input_batches,completed_requests,actual_fused_requests,actual_unfused_requests,arrow_adapt_ns,resource_preflight_ns,upload_submit_ns,complete_export_ns,aggregate_readback_mode,readback_buffers"
+        "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,session_batch_size,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes,input_batches,completed_requests,actual_fused_requests,actual_unfused_requests,arrow_adapt_ns,resource_preflight_ns,upload_submit_ns,complete_export_ns,aggregate_readback_mode,readback_buffers,shared_host_limit_bytes,shared_device_limit_bytes,peak_requests"
     );
     for sample in 0..=samples {
         let before = e.as_ref().map(Executor::stats).unwrap_or_default();
@@ -334,7 +345,7 @@ async fn main() -> Result<()> {
                 .unwrap_or_else(|| expected.schema());
             (out, schema, p, x, None, None, peak)
         } else {
-            let resources = SharedResources::default();
+            let resources = SharedResources::new(limits);
             let options = e
                 .as_ref()
                 .map(|e| AdapterOptions::with_resources(e.clone(), resources.clone()))
@@ -376,7 +387,12 @@ async fn main() -> Result<()> {
         let snapshot = resources.as_ref().map(SharedResources::snapshot);
         if let Some(plan) = &plan {
             for (name, value) in [
+                ("observed_upload_calls", stats.upload_calls),
                 ("observed_upload_bytes", stats.upload_bytes),
+                ("observed_readback_calls", stats.readback_calls),
+                ("observed_count_reads", stats.count_readbacks),
+                ("observed_alloc_calls", stats.allocation_calls),
+                ("observed_alloc_bytes", stats.allocation_bytes),
                 ("observed_readback_bytes", stats.readback_bytes),
                 ("observed_launches", stats.kernel_launches),
             ] {
@@ -417,6 +433,22 @@ async fn main() -> Result<()> {
             .map(|n| plan.as_ref().map(|p| metric(p, n)).unwrap_or(0));
         let peak_device = snapshot
             .map(|s| s.peak_device_bytes.to_string())
+            .unwrap_or_default();
+        if let Some(s) = snapshot
+            && (s.peak_host_bytes > limits.max_host_bytes
+                || s.peak_device_bytes > limits.max_device_bytes)
+        {
+            return Err(format!("shared peak exceeded measurement limits: {s:?}").into());
+        }
+        let budget_fields = resources
+            .as_ref()
+            .map(|_| {
+                [
+                    limits.max_host_bytes.to_string(),
+                    limits.max_device_bytes.to_string(),
+                    snapshot.unwrap().peak_requests.to_string(),
+                ]
+            })
             .unwrap_or_default();
         let peak_host = snapshot
             .map(|s| s.peak_host_bytes.to_string())
@@ -469,7 +501,7 @@ async fn main() -> Result<()> {
             .map(|value| value.to_string())
             .unwrap_or_default();
         println!(
-            "{backend},{path},{},{},{},{},{},{},{},{},{sample},{:.6},{prepare_ms:.6},{execute_ms:.6},{:.6},{output_rows},{},{},{},{},{},{},{},{},{definitions},{},{},{},{},{peak_device},{peak_host},{max_request},{},{},{},{},{},{},{},{},{aggregate_readback_mode},{readback_buffers}",
+            "{backend},{path},{},{},{},{},{},{},{},{},{sample},{:.6},{prepare_ms:.6},{execute_ms:.6},{:.6},{output_rows},{},{},{},{},{},{},{},{},{definitions},{},{},{},{},{peak_device},{peak_host},{max_request},{},{},{},{},{},{},{},{},{aggregate_readback_mode},{readback_buffers},{},{},{}",
             args[2],
             case.rows,
             case.pass,
@@ -503,7 +535,10 @@ async fn main() -> Result<()> {
             phase_metrics[0],
             phase_metrics[1],
             phase_metrics[2],
-            phase_metrics[3]
+            phase_metrics[3],
+            budget_fields[0],
+            budget_fields[1],
+            budget_fields[2]
         );
     }
     Ok(())

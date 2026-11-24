@@ -1,4 +1,6 @@
 #![cfg(feature = "datafusion")]
+#[path = "../examples/support/sql_acceptance_limits.rs"]
+mod limits;
 #[path = "../examples/support/sql_acceptance.rs"]
 mod support;
 use cuberel::datafusion::{AdapterOptions, CubeAggregateExec, CubeExec, SharedResources, register};
@@ -182,4 +184,38 @@ fn independent_expected_values_and_schema_rejections() {
         })
         .is_err()
     );
+}
+
+#[test]
+fn measurement_budget_flags_are_explicit_and_checked() {
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|s| s.to_string()).collect()
+    }
+    let defaults = limits::shared_limits(&[]).unwrap();
+    assert_eq!(defaults.max_host_bytes, 512 * 1024 * 1024);
+    let limits = limits::shared_limits(&args(&[
+        "--shared-device-bytes",
+        "4096",
+        "--shared-host-bytes",
+        "8192",
+    ]))
+    .unwrap();
+    assert_eq!(
+        (limits.max_device_bytes, limits.max_host_bytes),
+        (4096, 8192)
+    );
+    assert_eq!(limits.max_requests, defaults.max_requests);
+    for invalid in [
+        vec!["--shared-host-bytes"],
+        vec!["--shared-host-bytes", "0"],
+        vec!["--shared-device-bytes", "-1"],
+        vec!["--shared-host-bytes", "18446744073709551616"],
+        vec!["--host-bytes", "1"],
+        vec!["--shared-host-bytes", "1", "--shared-host-bytes", "2"],
+    ] {
+        assert!(
+            limits::shared_limits(&args(&invalid)).is_err(),
+            "{invalid:?}"
+        );
+    }
 }
