@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "description": "Synthetic profiling attribution/overhead contract: ordinary host-input SQL; compare off/host/device in one binary. Device windows add boundary synchronization, so their latency is diagnostic.",
+  "cases": [
+    {
+      "id": "primary",
+      "workload": "aggregate",
+      "rows": 1048576,
+      "pass_percent": 50,
+      "null_percent": 20,
+      "batches": 1,
+      "partitions": 1,
+      "batch_sizes": [
+        262144
+      ],
+      "readback_modes": [
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "scale8m",
+      "workload": "aggregate",
+      "rows": 8388608,
+      "pass_percent": 50,
+      "null_percent": 20,
+      "batches": 1,
+      "partitions": 1,
+      "batch_sizes": [
+        262144
+      ],
+      "readback_modes": [
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "project-output",
+      "workload": "project",
+      "rows": 65536,
+      "pass_percent": 50,
+      "null_percent": 20,
+      "batches": 1,
+      "partitions": 1,
+      "batch_sizes": [
+        65536
+      ],
+      "readback_modes": [
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    }
+  ]
+}

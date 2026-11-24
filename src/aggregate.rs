@@ -315,6 +315,7 @@ impl DeviceAggregates {
     }
     fn read_word(&self, handle: &Handle) -> Result<u32, ExecutionError> {
         let bytes = self.counters.read(&self.client, handle.clone(), 4)?;
+        let _profile = crate::profiling::span(crate::profiling::Metric::ScalarDecodeNs);
         Ok(u32::from_ne_bytes(bytes.as_chunks::<4>().0[0]))
     }
 }

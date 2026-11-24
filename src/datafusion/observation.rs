@@ -21,6 +21,7 @@ use std::{
 pub(crate) type ObservationCache = Mutex<BTreeMap<usize, Arc<Observation>>>;
 #[derive(Debug)]
 pub(crate) struct Observation {
+    profiling_mode: super::ProfilingMode,
     counts: BTreeMap<&'static str, Count>,
     pub(crate) queue: Time,
     pub(crate) prepare: Time,
@@ -46,15 +47,20 @@ impl Observation {
         cache: &ObservationCache,
         set: &ExecutionPlanMetricsSet,
         partition: usize,
+        profiling_mode: super::ProfilingMode,
     ) -> Arc<Self> {
         cache
             .lock()
             .unwrap()
             .entry(partition)
-            .or_insert_with(|| Self::new(set, partition))
+            .or_insert_with(|| Self::new(set, partition, profiling_mode))
             .clone()
     }
-    pub(crate) fn new(set: &ExecutionPlanMetricsSet, partition: usize) -> Arc<Self> {
+    pub(crate) fn new(
+        set: &ExecutionPlanMetricsSet,
+        partition: usize,
+        profiling_mode: super::ProfilingMode,
+    ) -> Arc<Self> {
         let names = [
             "input_rows",
             "input_batches",
@@ -78,7 +84,7 @@ impl Observation {
             "fused_requests",
             "unfused_requests",
         ];
-        let counts = names
+        let mut counts: BTreeMap<_, _> = names
             .into_iter()
             .map(|n| {
                 (
@@ -91,7 +97,19 @@ impl Observation {
                 )
             })
             .collect();
+        if profiling_mode != super::ProfilingMode::Off {
+            for name in crate::profiling::NAMES.into_iter().chain([
+                "profile_graph_aggregate_partial",
+                "profile_graph_aggregate_merge",
+                "profile_graph_other_kernels",
+                "profile_global_merge_ns",
+                "profile_global_output_ns",
+            ]) {
+                counts.insert(name, MetricBuilder::new(set).counter(name, partition));
+            }
+        }
         Arc::new(Self {
+            profiling_mode,
             counts,
             queue: MetricBuilder::new(set).subset_time("queue_wait", partition),
             prepare: MetricBuilder::new(set).subset_time("prepare", partition),
@@ -132,6 +150,22 @@ impl Observation {
         self.output_capacity.set_max(e.output_rows as usize);
     }
     pub(crate) fn fusion(&self, graph: &StageGraph) {
+        if self.profiling_mode != super::ProfilingMode::Off {
+            for stage in graph.stages() {
+                use crate::StageKind;
+                let name = match stage.kind {
+                    StageKind::AggregatePartial | StageKind::FusedAggregatePartial => {
+                        "profile_graph_aggregate_partial"
+                    }
+                    StageKind::AggregateMerge => "profile_graph_aggregate_merge",
+                    StageKind::ResidentInput | StageKind::Upload | StageKind::Materialize => {
+                        continue;
+                    }
+                    _ => "profile_graph_other_kernels",
+                };
+                self.add(name, 1);
+            }
+        }
         self.add(
             if graph.is_fused() {
                 "fused_requests"
@@ -154,6 +188,7 @@ impl Observation {
         WorkerObservation {
             observer: self.clone(),
             executor: executor.clone(),
+            profile: crate::profiling::Scope::new(self.profiling_mode),
             stats: executor.stats(),
             read_buffers: executor.readback_buffers(),
             defines: executor.define_count(),
@@ -175,6 +210,7 @@ impl Observation {
 pub(crate) struct WorkerObservation {
     observer: Arc<Observation>,
     executor: Executor,
+    profile: crate::profiling::Scope,
     stats: ExecutionStats,
     read_buffers: u64,
     defines: usize,
@@ -182,6 +218,11 @@ pub(crate) struct WorkerObservation {
 }
 impl Drop for WorkerObservation {
     fn drop(&mut self) {
+        if let Some(snapshot) = self.profile.snapshot() {
+            for (name, value) in crate::profiling::NAMES.into_iter().zip(snapshot) {
+                self.observer.add(name, value);
+            }
+        }
         let now = self.executor.stats();
         let old = self.stats;
         for (name, new, old) in [
@@ -305,7 +346,7 @@ mod tests {
     #[tokio::test]
     async fn pending_drop_and_terminal_error_are_observed_once() {
         let set = ExecutionPlanMetricsSet::new();
-        let o = Observation::new(&set, 0);
+        let o = Observation::new(&set, 0, super::super::ProfilingMode::Off);
         let mut stream = o.stream(Box::pin(RecordBatchStreamAdapter::new(
             Arc::new(arrow_schema::Schema::empty()),
             futures::stream::pending(),
@@ -315,7 +356,7 @@ mod tests {
         drop(stream);
         assert_eq!(o.counts["streams_canceled"].value(), 1);
         assert_eq!(o.active.value(), 0);
-        let o = Observation::new(&set, 1);
+        let o = Observation::new(&set, 1, super::super::ProfilingMode::Off);
         let mut stream = o.stream(Box::pin(RecordBatchStreamAdapter::new(
             Arc::new(arrow_schema::Schema::empty()),
             futures::stream::once(async { Err(DataFusionError::Execution("safe failure".into())) }),

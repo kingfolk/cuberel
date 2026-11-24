@@ -416,6 +416,8 @@ impl Fragment {
         lease.device(estimate.device_bytes)?;
         drop(preflight_timer);
         drop(prepare_timer);
+        let device_window =
+            crate::profiling::DeviceWindow::begin(&executor.client, input.num_rows() != 0);
         let _execute_timer = observation.execute_export.timer();
         let submit_timer = observation.upload_submit.timer();
         let result = executor
@@ -423,7 +425,7 @@ impl Fragment {
             .map_err(super::exec::execution)?;
         drop(submit_timer);
         observation.fusion(result.graph());
-        let _complete_timer = observation.complete_export.timer();
+        let complete_timer = observation.complete_export.timer();
         let materialized = result
             .materialize_arrow()
             .map_err(super::exec::execution)?
@@ -432,6 +434,12 @@ impl Fragment {
         let result =
             RecordBatch::try_new(self.output_schema.clone(), materialized.columns().to_vec())
                 .map_err(super::exec::execution)?;
-        lease.output(result)
+        let result = lease.output(result)?;
+        drop(complete_timer);
+        drop(_execute_timer);
+        if let Some(window) = device_window {
+            window.finish();
+        }
+        Ok(result)
     }
 }

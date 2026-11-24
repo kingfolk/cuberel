@@ -348,3 +348,5 @@ for ownership guarantees, diagnostics and the before/after measurement.
 submission. `estimate_pipeline` reports the selected plan; `execute_pipeline_host`
 validates upload and execution atomically. See [resource accounting and limits](docs/resource-budgets.md)
 and [the reproducible M2 acceptance report](docs/benchmarks/milestone-03-acceptance.md).
+
+The [detailed SQL profiler](docs/sql-detailed-profiling.md) separates host encoding, runtime calls and explicit device-window diagnostics.

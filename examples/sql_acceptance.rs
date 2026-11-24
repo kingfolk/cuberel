@@ -5,7 +5,9 @@ mod limits;
 mod support;
 use cuberel::{
     AggregateReadbackMode, ExecutionStats, Executor,
-    datafusion::{AdapterOptions, CubeAggregateExec, CubeExec, SharedResources, register},
+    datafusion::{
+        AdapterOptions, CubeAggregateExec, CubeExec, ProfilingMode, SharedResources, register,
+    },
 };
 use datafusion::{
     execution::session_state::SessionStateBuilder,
@@ -267,9 +269,10 @@ async fn main() -> Result<()> {
         .unwrap_or(all_args.len());
     let (args, flags) = all_args.split_at(flag_start);
     if !(9..=11).contains(&args.len()) {
-        return Err("usage: sql_acceptance datafusion|cpu|metal sql|dsl project|aggregate|mixed rows pass_percent null_percent batches partitions warm_samples [session_batch_size [aggregate_readback_mode]] [--shared-host-bytes N] [--shared-device-bytes N]".into());
+        return Err("usage: sql_acceptance datafusion|cpu|metal sql|dsl project|aggregate|mixed rows pass_percent null_percent batches partitions warm_samples [session_batch_size [aggregate_readback_mode]] [--shared-host-bytes N] [--shared-device-bytes N] [--profiling off|host|device]".into());
     }
     let limits = limits::shared_limits(flags)?;
+    let profiling_mode = limits::profiling_mode(flags)?;
     let backend = &args[0];
     let path = &args[1];
     let workload = Workload::parse(&args[2])?;
@@ -277,7 +280,10 @@ async fn main() -> Result<()> {
         return Err("path must be sql or dsl".into());
     }
     if path == "dsl" && !flags.is_empty() {
-        return Err("shared budget flags apply only to SQL; DSL has no shared controller".into());
+        return Err("measurement flags apply only to SQL; DSL has no shared controller".into());
+    }
+    if profiling_mode != ProfilingMode::Off && (path != "sql" || backend == "datafusion") {
+        return Err("profiling requires a SQL device backend".into());
     }
     if path == "dsl" && (backend == "datafusion" || workload == Workload::Mixed) {
         return Err("DSL requires a device and project/aggregate workload".into());
@@ -328,7 +334,7 @@ async fn main() -> Result<()> {
     let sql = workload.sql(case.pass);
     eprintln!("sql={sql}\ncase={case:?}\nbackend={backend} path={path} init_ms={init_ms:.6}");
     println!(
-        "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,session_batch_size,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes,input_batches,completed_requests,actual_fused_requests,actual_unfused_requests,arrow_adapt_ns,resource_preflight_ns,upload_submit_ns,complete_export_ns,aggregate_readback_mode,readback_buffers,shared_host_limit_bytes,shared_device_limit_bytes,peak_requests"
+        "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,session_batch_size,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes,input_batches,completed_requests,actual_fused_requests,actual_unfused_requests,arrow_adapt_ns,resource_preflight_ns,upload_submit_ns,complete_export_ns,aggregate_readback_mode,readback_buffers,shared_host_limit_bytes,shared_device_limit_bytes,peak_requests,profiling_mode,profile_validity_expand_ns,profile_validity_expand_bytes,profile_value_encode_ns,profile_value_encode_bytes,profile_validity_encode_ns,profile_validity_encode_bytes,profile_runtime_upload_ns,profile_runtime_allocate_ns,profile_pipeline_prepare_ns,profile_pipeline_submit_ns,profile_completion_sync_ns,profile_readback_api_ns,profile_scalar_decode_ns,profile_arrow_export_ns,profile_device_window_ns,profile_device_windows,profile_device_unavailable,profile_device_failed,profile_device_boundary_ns,profile_graph_aggregate_partial,profile_graph_aggregate_merge,profile_graph_other_kernels,profile_global_merge_ns,profile_global_output_ns"
     );
     for sample in 0..=samples {
         let before = e.as_ref().map(Executor::stats).unwrap_or_default();
@@ -348,7 +354,10 @@ async fn main() -> Result<()> {
             let resources = SharedResources::new(limits);
             let options = e
                 .as_ref()
-                .map(|e| AdapterOptions::with_resources(e.clone(), resources.clone()))
+                .map(|e| {
+                    AdapterOptions::with_resources(e.clone(), resources.clone())
+                        .with_profiling_mode(profiling_mode)
+                })
                 .unwrap_or_default();
             let start = Instant::now();
             let builder = SessionStateBuilder::new_with_default_features().with_config(
@@ -500,7 +509,7 @@ async fn main() -> Result<()> {
         let readback_buffers = readback_buffers
             .map(|value| value.to_string())
             .unwrap_or_default();
-        println!(
+        let mut csv_row = format!(
             "{backend},{path},{},{},{},{},{},{},{},{},{sample},{:.6},{prepare_ms:.6},{execute_ms:.6},{:.6},{output_rows},{},{},{},{},{},{},{},{},{definitions},{},{},{},{},{peak_device},{peak_host},{max_request},{},{},{},{},{},{},{},{},{aggregate_readback_mode},{readback_buffers},{},{},{}",
             args[2],
             case.rows,
@@ -540,6 +549,67 @@ async fn main() -> Result<()> {
             budget_fields[1],
             budget_fields[2]
         );
+        let profiling_label = match (path.as_str(), backend.as_str(), profiling_mode) {
+            ("sql", "datafusion", _) | ("dsl", _, _) => "",
+            (_, _, ProfilingMode::Off) => "off",
+            (_, _, ProfilingMode::Host) => "host",
+            (_, _, ProfilingMode::Device) => "device",
+        };
+        csv_row.push_str(&format!(",{profiling_label}"));
+        let profile_names = [
+            "profile_validity_expand_ns",
+            "profile_validity_expand_bytes",
+            "profile_value_encode_ns",
+            "profile_value_encode_bytes",
+            "profile_validity_encode_ns",
+            "profile_validity_encode_bytes",
+            "profile_runtime_upload_ns",
+            "profile_runtime_allocate_ns",
+            "profile_pipeline_prepare_ns",
+            "profile_pipeline_submit_ns",
+            "profile_completion_sync_ns",
+            "profile_readback_api_ns",
+            "profile_scalar_decode_ns",
+            "profile_arrow_export_ns",
+            "profile_device_window_ns",
+            "profile_device_windows",
+            "profile_device_unavailable",
+            "profile_device_failed",
+            "profile_device_boundary_ns",
+            "profile_graph_aggregate_partial",
+            "profile_graph_aggregate_merge",
+            "profile_graph_other_kernels",
+            "profile_global_merge_ns",
+            "profile_global_output_ns",
+        ];
+        let mut profile_values = profile_names.map(|name| {
+            plan.as_ref()
+                .and_then(|plan| optional_metric(plan, name))
+                .map(|value| value.to_string())
+        });
+        // GPU event totals exist only for successful, nonempty device windows.
+        let windows = profile_values[15]
+            .as_deref()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(0);
+        let unavailable = profile_values[16]
+            .as_deref()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(0);
+        let failed = profile_values[17]
+            .as_deref()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(0);
+        if windows == 0 || unavailable != 0 || failed != 0 {
+            profile_values[14] = None;
+        }
+        for value in profile_values {
+            csv_row.push(',');
+            if let Some(value) = value {
+                csv_row.push_str(&value);
+            }
+        }
+        println!("{csv_row}");
     }
     Ok(())
 }

@@ -271,10 +271,15 @@ impl Executor {
         batch: &Batch<'_>,
         parameters: &Parameters,
     ) -> Result<DevicePipeline, ExecutionError> {
-        let descriptor = DeviceBatch::describe(&self.client, batch)?;
-        let plan = self.prepare_pipeline(pipeline, &descriptor, parameters)?;
-        self.enforce(plan.estimate)?;
+        let plan = {
+            let _profile = crate::profiling::span(crate::profiling::Metric::PipelinePrepareNs);
+            let descriptor = DeviceBatch::describe(&self.client, batch)?;
+            let plan = self.prepare_pipeline(pipeline, &descriptor, parameters)?;
+            self.enforce(plan.estimate)?;
+            plan
+        };
         let uploaded = self.without_budget().upload(batch)?;
+        let _profile = crate::profiling::span(crate::profiling::Metric::PipelineSubmitNs);
         self.submit_pipeline(pipeline, &uploaded, parameters, plan, true)
     }
     fn prepare_pipeline(

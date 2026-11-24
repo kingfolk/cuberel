@@ -80,6 +80,27 @@ class ManifestTests(unittest.TestCase):
                                        "--shared-device-bytes", "2097152"])
         self.assertFalse(any(job["path"] == "dsl" for job in jobs))
 
+    def test_manifest_profiling_cross_product_rotates_and_keeps_one_baseline(self):
+        manifest = {"version": 1, "description": "x", "cases": [valid_case()]}
+        jobs = runner.manifest_jobs(manifest, ["datafusion", "cpu"], 2,
+                                    ["off", "host", "device"])
+        self.assertEqual(len(jobs), 2 * 2 * (1 + 2 * 3))
+        for repeat in (1, 2):
+            group = [job for job in jobs if job["repeat"] == repeat and job["batch_size"] == 8192]
+            self.assertEqual(sum(job["backend"] == "datafusion" for job in group), 1)
+            baseline = next(job for job in group if job["backend"] == "datafusion")
+            self.assertIsNone(baseline["profiling_mode"])
+            device_jobs = [job for job in group if job["backend"] == "cpu"]
+            self.assertEqual(len(device_jobs), 6)
+            self.assertEqual([job["profiling_mode"] for job in device_jobs[:3]],
+                             ["off", "host", "device"] if repeat == 1
+                             else ["host", "device", "off"])
+        cpu = next(job for job in jobs if job["backend"] == "cpu")
+        command = runner.build_command("sql_acceptance", cpu, 3)
+        self.assertEqual(command[-2:], ["--profiling", "off"])
+        baseline_command = runner.build_command("sql_acceptance", jobs[0], 3)
+        self.assertNotIn("--profiling", baseline_command)
+
     def test_legacy_fixture_counts(self):
         self.assertEqual(len(runner.cases()), 26)
         self.assertEqual(len(runner.cases(quick=True)), 4)
@@ -97,8 +118,10 @@ class OutputValidationTests(unittest.TestCase):
                   "rows": "64", "pass_percent": "50", "null_percent": "20",
                   "batches": "2", "partitions": "1", "session_batch_size": "8192",
                   "aggregate_readback_mode": "" if backend == "datafusion" else mode,
+                  "profiling_mode": "" if backend == "datafusion" else "off",
                   "init_ms": "1.0", "prepare_ms": "2.0", "execute_ms": "3.0",
                   "total_ms": "5.0", "case_id": "small-case"}
+        header.update({field: "" for field in runner.PROFILE_COLUMNS})
         return [dict(header, phase="first", sample="0"),
                 dict(header, phase="warm", sample="1", init_ms="0")]
 
@@ -118,6 +141,73 @@ class OutputValidationTests(unittest.TestCase):
         rows[0]["aggregate_readback_mode"] = "scalar"
         with self.assertRaisesRegex(RuntimeError, "DataFusion readback mode"):
             runner.validate_output(rows, self._job(backend="datafusion", mode=None), 1)
+
+    def test_profiling_mode_must_match_and_cpu_baseline_is_off(self):
+        rows = self._rows()
+        runner.validate_output(rows, self._job(), 1)
+        rows[1]["profiling_mode"] = "host"
+        with self.assertRaisesRegex(RuntimeError, "profiling mode"):
+            runner.validate_output(rows, self._job(), 1)
+        rows = self._rows(backend="datafusion", mode=None)
+        runner.validate_output(rows, self._job(backend="datafusion", mode=None), 1)
+        rows[0]["profiling_mode"] = "off"
+        with self.assertRaisesRegex(RuntimeError, "profiling mode"):
+            runner.validate_output(rows, self._job(backend="datafusion", mode=None), 1)
+
+    def test_off_datafusion_and_dsl_profile_metrics_must_be_blank(self):
+        for backend, path in (("cpu", "sql"), ("datafusion", "sql"), ("cpu", "dsl")):
+            job = {**self._job(backend=backend), "path": path,
+                   "batch_size": None if path == "dsl" else 8192,
+                   "profiling_mode": None}
+            rows = self._rows(backend=backend)
+            for row in rows:
+                row["path"] = path
+                row["session_batch_size"] = "" if path == "dsl" else "8192"
+                row["profiling_mode"] = "" if backend == "datafusion" or path == "dsl" else "off"
+            runner.validate_output(rows, job, 1)
+            rows[1]["profile_value_encode_ns"] = "0"
+            with self.assertRaisesRegex(RuntimeError, "must be blank"):
+                runner.validate_output(rows, job, 1)
+
+    def test_host_metrics_must_be_complete_nonnegative_integers_without_gpu_time(self):
+        job = {**self._job(), "profiling_mode": "host"}
+        rows = self._rows()
+        for row in rows:
+            row["profiling_mode"] = "host"
+            for field in runner.PROFILE_COLUMNS:
+                row[field] = "" if field == "profile_device_window_ns" else "0"
+        runner.validate_output(rows, job, 1)
+        rows[1]["profile_arrow_export_ns"] = ""
+        with self.assertRaisesRegex(RuntimeError, "invalid profile_arrow_export_ns"):
+            runner.validate_output(rows, job, 1)
+        rows[1]["profile_arrow_export_ns"] = "0"
+        rows[1]["profile_device_window_ns"] = "1"
+        with self.assertRaisesRegex(RuntimeError, "GPU time must be blank"):
+            runner.validate_output(rows, job, 1)
+        rows[1]["profile_device_window_ns"] = ""
+        rows[1]["profile_device_unavailable"] = "1"
+        with self.assertRaisesRegex(RuntimeError, "device counters must be zero"):
+            runner.validate_output(rows, job, 1)
+
+    def test_device_gpu_time_must_match_valid_windows(self):
+        job = {**self._job(), "profiling_mode": "device"}
+        rows = self._rows()
+        for row in rows:
+            row["profiling_mode"] = "device"
+            for field in runner.PROFILE_COLUMNS:
+                row[field] = "0"
+            row["profile_device_windows"] = "1"
+            row["profile_device_window_ns"] = "5"
+        runner.validate_output(rows, job, 1)
+        rows[1]["profile_device_window_ns"] = "0"
+        with self.assertRaisesRegex(RuntimeError, "GPU time must be positive"):
+            runner.validate_output(rows, job, 1)
+        rows[1]["profile_device_window_ns"] = ""
+        rows[1]["profile_device_failed"] = "1"
+        runner.validate_output(rows, job, 1)
+        rows[1]["profile_device_window_ns"] = "5"
+        with self.assertRaisesRegex(RuntimeError, "GPU time must be blank"):
+            runner.validate_output(rows, job, 1)
 
     def test_manifest_budget_caps_must_match(self):
         job = {**self._job(), "manifest": True, "shared_host_bytes": 100,

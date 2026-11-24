@@ -219,3 +219,27 @@ fn measurement_budget_flags_are_explicit_and_checked() {
         );
     }
 }
+
+#[test]
+fn measurement_profiling_flags_are_explicit_and_checked() {
+    use cuberel::datafusion::ProfilingMode;
+    let flags = |values: &[&str]| values.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(limits::profiling_mode(&[]).unwrap(), ProfilingMode::Off);
+    for (name, expected) in [
+        ("off", ProfilingMode::Off),
+        ("host", ProfilingMode::Host),
+        ("device", ProfilingMode::Device),
+    ] {
+        let args = flags(&["--shared-host-bytes", "8192", "--profiling", name]);
+        assert_eq!(limits::profiling_mode(&args).unwrap(), expected);
+        assert_eq!(limits::shared_limits(&args).unwrap().max_host_bytes, 8192);
+    }
+    for invalid in [
+        vec!["--profiling"],
+        vec!["--profiling", "gpu"],
+        vec!["--profiling", "host", "--profiling", "device"],
+    ] {
+        assert!(limits::profiling_mode(&flags(&invalid)).is_err());
+        assert!(limits::shared_limits(&flags(&invalid)).is_err());
+    }
+}

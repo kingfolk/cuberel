@@ -138,6 +138,12 @@ impl<'a> ArrowBatch<'a> {
                 // is_valid(i) independently honors the NullBuffer's bit offset.
                 // Never apply Array::offset() a second time to either view.
                 let validity = (array.null_count() != 0).then(|| {
+                    let _profile =
+                        crate::profiling::span(crate::profiling::Metric::ValidityExpandNs);
+                    crate::profiling::add(
+                        crate::profiling::Metric::ValidityExpandBytes,
+                        row_count as u64 * 4,
+                    );
                     (0..row_count)
                         .map(|i| u32::from(array.is_valid(i)))
                         .collect()
@@ -252,6 +258,7 @@ impl DeviceProjection {
 }
 
 fn aggregate_record_batch(results: Vec<AggregateResult>) -> Result<RecordBatch, ArrowAdapterError> {
+    let _profile = crate::profiling::span(crate::profiling::Metric::ArrowExportNs);
     let mut fields = Vec::with_capacity(results.len());
     let mut arrays: Vec<ArrayRef> = Vec::with_capacity(results.len());
     for result in results {
@@ -284,6 +291,7 @@ fn aggregate_record_batch(results: Vec<AggregateResult>) -> Result<RecordBatch, 
         .map_err(ArrowAdapterError::Output)
 }
 fn projection_record_batch(columns: Vec<SelectedColumn>) -> Result<RecordBatch, ArrowAdapterError> {
+    let _profile = crate::profiling::span(crate::profiling::Metric::ArrowExportNs);
     let mut fields = Vec::with_capacity(columns.len());
     let mut arrays: Vec<ArrayRef> = Vec::with_capacity(columns.len());
     for column in columns {
