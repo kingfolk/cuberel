@@ -68,6 +68,7 @@ impl Observation {
             "observed_upload_calls",
             "observed_upload_bytes",
             "observed_readback_calls",
+            "observed_readback_buffers",
             "observed_readback_bytes",
             "observed_launches",
             "observed_count_reads",
@@ -154,6 +155,7 @@ impl Observation {
             observer: self.clone(),
             executor: executor.clone(),
             stats: executor.stats(),
+            read_buffers: executor.readback_buffers(),
             defines: executor.define_count(),
             start: Instant::now(),
         }
@@ -174,6 +176,7 @@ pub(crate) struct WorkerObservation {
     observer: Arc<Observation>,
     executor: Executor,
     stats: ExecutionStats,
+    read_buffers: u64,
     defines: usize,
     start: Instant,
 }
@@ -217,6 +220,12 @@ impl Drop for WorkerObservation {
         ] {
             self.observer.add(name, new.saturating_sub(old));
         }
+        self.observer.add(
+            "observed_readback_buffers",
+            self.executor
+                .readback_buffers()
+                .saturating_sub(self.read_buffers),
+        );
         self.observer.add(
             "define_calls",
             self.executor.define_count().saturating_sub(self.defines) as u64,

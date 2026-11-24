@@ -207,7 +207,7 @@ impl DisplayAs for CubeExec {
     fn fmt_as(&self, _kind: DisplayFormatType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "CubeExec: filter={}, filters={}, outputs={}, nodes={}, boundary=[{}], semantic_profile=df55-i32-v1, max_in_flight=1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}, batch_policy={:?}",
+            "CubeExec: filter={}, filters={}, outputs={}, nodes={}, boundary=[{}], semantic_profile=df55-i32-v1, max_in_flight=1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}, batch_policy={:?}, aggregate_readback={:?}",
             self.fragment.filter_count != 0,
             self.fragment.filter_count,
             self.schema().fields().len(),
@@ -216,7 +216,8 @@ impl DisplayAs for CubeExec {
             self.id,
             self.engine.executor.client.name(),
             self.engine.resources.limits(),
-            self.engine.batch_policy
+            self.engine.batch_policy,
+            self.engine.executor.aggregate_readback_mode()
         )
     }
 }

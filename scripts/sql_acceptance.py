@@ -72,6 +72,8 @@ def main():
                         help="SQL DataFusion session batch sizes")
     parser.add_argument("--batch-study", action="store_true",
                         help="run aggregate 64K/1M/2M, one source batch, one partition, pass 50, NULL 20")
+    parser.add_argument("--readback-modes", nargs="+", choices=["scalar", "batched"], default=["scalar"],
+                        help="aggregate readback modes; nondefault modes require --batch-study")
     parser.add_argument("--study-rows", nargs="+", type=positive_int,
                         help="optional total-row subset for --batch-study")
     parser.add_argument("--backends", nargs="+", default=["datafusion", "cpu", "metal"],
@@ -82,6 +84,10 @@ def main():
         parser.error("--batch-sizes must not contain duplicates")
     if len(set(args.backends)) != len(args.backends):
         parser.error("--backends must not contain duplicates")
+    if len(set(args.readback_modes)) != len(args.readback_modes):
+        parser.error("--readback-modes must not contain duplicates")
+    if any(mode != "scalar" for mode in args.readback_modes) and not args.batch_study:
+        parser.error("nondefault --readback-modes require --batch-study")
     if args.study_rows is not None and (not args.batch_study or len(set(args.study_rows)) != len(args.study_rows)):
         parser.error("--study-rows requires --batch-study and unique row counts")
     binary = args.binary.resolve(strict=True)
@@ -98,12 +104,15 @@ def main():
         "source_sha256": {name: hashlib.sha256(Path(name).read_bytes()).hexdigest()
                           for name in ("examples/sql_acceptance.rs", "examples/support/sql_acceptance.rs",
                                        "scripts/sql_acceptance.py", "Cargo.toml", "Cargo.lock")},
+        "library_sha256": {str(name): hashlib.sha256(name.read_bytes()).hexdigest()
+                           for name in sorted(Path("src").rglob("*.rs"))},
         "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
         "binary": str(binary), "profile": "release (build command recorded in report)",
         "environment": {k: v for k, v in os.environ.items()
                         if k in ("RAYON_NUM_THREADS", "TOKIO_WORKER_THREADS", "CUBECL_LOG_LEVEL")},
         "warm_samples": args.warm, "repeats": args.repeats,
         "batch_sizes": args.batch_sizes, "batch_study": args.batch_study,
+        "readback_modes": args.readback_modes,
         "study_rows": args.study_rows,
         "note": "sequential processes; OS/driver caches not cleared; no concurrent queries",
     }
@@ -124,25 +133,35 @@ def main():
             if args.batch_study:
                 for batch_size in args.batch_sizes:
                     for backend in backend_order:
-                        jobs.append((backend, "sql", case, batch_size, repeat))
+                        if backend == "datafusion":
+                            jobs.append((backend, "sql", case, batch_size, repeat, None))
+                        else:
+                            mode_offset = (repeat - 1) % len(args.readback_modes)
+                            mode_order = args.readback_modes[mode_offset:] + args.readback_modes[:mode_offset]
+                            for mode in mode_order:
+                                jobs.append((backend, "sql", case, batch_size, repeat, mode))
                 continue
             for batch_size in args.batch_sizes:
                 for backend in backend_order:
-                    jobs.append((backend, "sql", case, batch_size, repeat))
+                    jobs.append((backend, "sql", case, batch_size, repeat, None))
             # Keep the original DSL diagnostic once per original fixture/repeat,
             # independent of how many SQL batch sizes were requested.
             if dsl_case:
                 for backend in backend_order:
                     if backend != "datafusion":
-                        jobs.append((backend, "dsl", case, None, repeat))
+                        jobs.append((backend, "dsl", case, None, repeat, None))
 
-    for i, (backend, path, case, batch_size, repeat) in enumerate(jobs):
+    for i, (backend, path, case, batch_size, repeat, readback_mode) in enumerate(jobs):
         command = [str(binary), backend, path, *map(str, case), str(args.warm)]
         if path == "sql":
             command.append(str(batch_size))
+        if readback_mode is not None:
+            command.append(readback_mode)
         parts = [backend, path, *map(str, case), f"repeat{repeat}"]
         if batch_size is not None:
             parts.append(f"batch{batch_size}")
+        if readback_mode is not None:
+            parts.append(readback_mode)
         name = "-".join(map(str, parts))
         print(f"[{i+1}/{len(jobs)}] {name}", flush=True)
         completed = subprocess.run(command, capture_output=True, text=True)
@@ -154,11 +173,15 @@ def main():
         rows = list(csv.DictReader(completed.stdout.splitlines()))
         if len(rows) != args.warm + 1 or rows[0]["phase"] != "first":
             raise RuntimeError(f"incomplete samples: {name}")
+        actual_modes = {row["aggregate_readback_mode"] for row in rows}
+        if len(actual_modes) != 1 or (readback_mode is not None and actual_modes != {readback_mode}):
+            raise RuntimeError(f"unexpected aggregate readback mode: {name}: {actual_modes}")
         combined_rows = [dict(row, repeat=repeat) for row in rows]
         all_rows.extend(combined_rows)
         first, warm = rows[0], rows[1:]
         summary = {k: first[k] for k in ("backend", "path", "workload", "rows", "pass_percent",
-                                        "null_percent", "batches", "partitions", "session_batch_size")}
+                                        "null_percent", "batches", "partitions", "session_batch_size",
+                                        "aggregate_readback_mode")}
         summary["repeat"] = repeat
         summary["warm_samples"] = len(warm)
         for key in ("init_ms", "prepare_ms", "execute_ms", "total_ms"):
@@ -173,6 +196,7 @@ def main():
                     "allocation_calls", "allocation_bytes", "launches", "count_reads",
                     "define_calls", "queue_wait_ns", "adapter_prepare_ns", "execute_export_ns", "worker_ns",
                     "arrow_adapt_ns", "resource_preflight_ns", "upload_submit_ns", "complete_export_ns",
+                    "readback_buffers",
                     "peak_device_bytes", "peak_host_bytes", "max_request_device_bytes"):
             summary["warm_last_" + key] = warm[-1][key]
         summaries.append(summary)

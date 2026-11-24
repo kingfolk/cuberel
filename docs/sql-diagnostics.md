@@ -144,3 +144,7 @@ query. Use the independent end-to-end timer for performance claims.
 Failures count time in the phase actually entered; unentered registered phases
 remain zero. CPU-only DataFusion and direct DSL have no Cube phase observations;
 the acceptance CSV marks those fields unavailable rather than inventing times.
+
+`observed_readback_buffers` counts attempted explicit buffer descriptors, distinct
+from read API calls and validated bytes. The configured aggregate readback mode
+is visible in placement/EXPLAIN; see [mode semantics and limits](aggregate-readback.md).

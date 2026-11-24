@@ -235,6 +235,8 @@ mod runtime {
             .collect()
     }
     async fn exercise(executor: Executor) {
+        let executor =
+            executor.with_aggregate_readback_mode(cuberel::AggregateReadbackMode::Batched);
         let values_input = batch(vec![
             Some(-5),
             Some(10),
@@ -447,6 +449,8 @@ mod runtime {
         );
     }
     async fn sums(executor: Executor) {
+        let executor =
+            executor.with_aggregate_readback_mode(cuberel::AggregateReadbackMode::Batched);
         let sql = "SELECT sum(x) AS total,count(*) AS n,min(x) AS lo FROM t";
         for partitions in [1, 2] {
             for input in [

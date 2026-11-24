@@ -50,6 +50,7 @@ async fn plan(
     (ctx, p)
 }
 async fn exercise(executor: Executor) {
+    let executor = executor.with_aggregate_readback_mode(cuberel::AggregateReadbackMode::Batched);
     let resources = SharedResources::default();
     let (ctx, p) = plan(&executor, &resources).await;
     let before = executor.stats();

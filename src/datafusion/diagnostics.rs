@@ -50,6 +50,7 @@ pub struct PlacementDecision {
 pub struct PlacementReport {
     pub mode: PlacementMode,
     pub batch_policy: Option<super::BatchPolicy>,
+    pub aggregate_readback_mode: Option<crate::AggregateReadbackMode>,
     pub device: Option<String>,
     pub semantic_profile: &'static str,
     pub per_request_budget: Option<crate::ResourceBudget>,
@@ -60,13 +61,14 @@ impl fmt::Display for PlacementReport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "placement={:?}, device={:?}, semantic_profile={}, per_request_budget={:?}, shared_limits={:?}, batch_policy={:?}",
+            "placement={:?}, device={:?}, semantic_profile={}, per_request_budget={:?}, shared_limits={:?}, batch_policy={:?}, aggregate_readback={:?}",
             self.mode,
             self.device,
             self.semantic_profile,
             self.per_request_budget,
             self.shared_limits,
-            self.batch_policy
+            self.batch_policy,
+            self.aggregate_readback_mode
         )?;
         for d in &self.decisions {
             writeln!(
@@ -98,6 +100,10 @@ pub fn placement_report(
 ) -> Result<PlacementReport> {
     let mut report = PlacementReport {
         mode: options.placement_mode,
+        aggregate_readback_mode: options
+            .engine
+            .as_ref()
+            .map(|e| e.executor.aggregate_readback_mode()),
         batch_policy: options.enabled.then_some(options.batch_policy).flatten(),
         device: options
             .engine

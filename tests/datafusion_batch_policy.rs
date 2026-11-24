@@ -192,6 +192,7 @@ async fn policy_registration_changes_only_batch_size_and_stays_planning_only() {
 
 #[cfg(any(feature = "cpu", all(feature = "metal", target_vendor = "apple")))]
 async fn exercise_bounded_workloads(executor: cuberel::Executor) {
+    let executor = executor.with_aggregate_readback_mode(cuberel::AggregateReadbackMode::Batched);
     let policy = BatchPolicy::new(8, 16).unwrap();
     for workload in [
         Workload::parse("aggregate").unwrap(),
@@ -270,6 +271,7 @@ async fn metal_batch_policy_bounds_aggregate_and_project() {
 
 #[cfg(any(feature = "cpu", all(feature = "metal", target_vendor = "apple")))]
 async fn exercise_cap_rejection_and_clone_isolation(executor: cuberel::Executor) {
+    let executor = executor.with_aggregate_readback_mode(cuberel::AggregateReadbackMode::Batched);
     let policy = BatchPolicy::new(8, 16).unwrap();
     for workload in [
         Workload::parse("aggregate").unwrap(),

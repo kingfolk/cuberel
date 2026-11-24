@@ -332,6 +332,7 @@ impl FusedPlan {
             dependencies: Arc::new(dependencies),
             retained: Arc::new(retained),
             stats,
+            readback_mode: executor.aggregate_readback,
             predicate_checks: Arc::new(predicate_checks),
             row_count_state,
         })
@@ -599,8 +600,10 @@ mod tests {
         prepare,
     };
     use cubecl::{Device, prelude::KernelMetadata};
-    fn check(device: Device) {
-        let e = Executor::new(device.client()).unwrap();
+    fn check(device: Device, mode: crate::AggregateReadbackMode) {
+        let e = Executor::new(device.client())
+            .unwrap()
+            .with_aggregate_readback_mode(mode);
         let schema = Schema::new(&[("x", DataType::I32)], &[]).unwrap();
         let x = prepare(&col("x"), &schema).unwrap();
         let batch = e
@@ -663,11 +666,21 @@ mod tests {
     #[cfg(feature = "cpu")]
     #[test]
     fn cpu_fused_identity_and_high_word_dependency() {
-        check(Device::cpu().unwrap());
+        for mode in [
+            crate::AggregateReadbackMode::Scalar,
+            crate::AggregateReadbackMode::Batched,
+        ] {
+            check(Device::cpu().unwrap(), mode);
+        }
     }
     #[cfg(all(feature = "metal", target_vendor = "apple"))]
     #[test]
     fn metal_fused_identity_and_high_word_dependency() {
-        check(Device::metal(Default::default()).unwrap());
+        for mode in [
+            crate::AggregateReadbackMode::Scalar,
+            crate::AggregateReadbackMode::Batched,
+        ] {
+            check(Device::metal(Default::default()).unwrap(), mode);
+        }
     }
 }

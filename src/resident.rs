@@ -39,6 +39,7 @@ pub(crate) struct ExecutionCounters {
     uploads: AtomicU64,
     upload_bytes: AtomicU64,
     reads: AtomicU64,
+    read_buffers: AtomicU64,
     read_bytes: AtomicU64,
     pub(crate) launches: AtomicU64,
     pub(crate) count_reads: AtomicU64,
@@ -53,10 +54,46 @@ impl ExecutionCounters {
         expected: usize,
     ) -> Result<Bytes, ExecutionError> {
         self.reads.fetch_add(1, Ordering::Relaxed);
+        self.read_buffers.fetch_add(1, Ordering::Relaxed);
         let bytes = read_plane(client, handle, expected)?;
         self.read_bytes
             .fetch_add(bytes.len() as u64, Ordering::Relaxed);
         Ok(bytes)
+    }
+    /// Read immutable U32 scalar planes together. Count one runtime API call,
+    /// but expose every requested buffer separately from the call count.
+    pub(crate) fn read_words(
+        &self,
+        client: &Client,
+        handles: Vec<Handle>,
+    ) -> Result<Vec<u32>, ExecutionError> {
+        if handles.is_empty() {
+            return Ok(Vec::new());
+        }
+        let expected = handles.len();
+        self.reads.fetch_add(1, Ordering::Relaxed);
+        self.read_buffers
+            .fetch_add(expected as u64, Ordering::Relaxed);
+        let data = client.read(handles).map_err(ExecutionError::Backend)?;
+        if data.len() != expected {
+            return Err(ExecutionError::InvalidAggregation {
+                reason: "unexpected scalar readback plane count",
+            });
+        }
+        let words = data
+            .iter()
+            .map(|bytes| {
+                let raw: &[u8] = bytes;
+                let word: [u8; 4] = raw.try_into().map_err(|_| ExecutionError::OutputLength {
+                    expected: 4,
+                    actual: bytes.len(),
+                })?;
+                Ok(u32::from_ne_bytes(word))
+            })
+            .collect::<Result<Vec<_>, ExecutionError>>()?;
+        self.read_bytes
+            .fetch_add((words.len() as u64) * 4, Ordering::Relaxed);
+        Ok(words)
     }
     fn snapshot(&self) -> ExecutionStats {
         ExecutionStats {
@@ -275,6 +312,12 @@ impl DeviceResult {
 impl Executor {
     pub fn stats(&self) -> ExecutionStats {
         self.counters.snapshot()
+    }
+    /// Cumulative buffer descriptors requested by explicit read APIs, including
+    /// failed requests. A batched API call can request multiple buffers. Excludes
+    /// implicit backend transfers; shared with executor clones, like stats().
+    pub fn readback_buffers(&self) -> u64 {
+        self.counters.read_buffers.load(Ordering::Relaxed)
     }
     pub(crate) fn allocate(&self, bytes: usize) -> Handle {
         self.counters.allocations.fetch_add(1, Ordering::Relaxed);
