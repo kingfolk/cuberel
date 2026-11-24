@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "description": "Predeclared follow-up after original projection Host median +9.7% exceeded the 5% goal. Keep original data; repeat only projection with 50 warm samples, 3 fresh processes and rotated off/host/device order, same binary and caps. Assess mode overhead variability, not an optimization speedup.",
+  "cases": [
+    {
+      "id": "project-output",
+      "workload": "project",
+      "rows": 65536,
+      "pass_percent": 50,
+      "null_percent": 20,
+      "batches": 1,
+      "partitions": 1,
+      "batch_sizes": [
+        65536
+      ],
+      "readback_modes": [
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    }
+  ]
+}
