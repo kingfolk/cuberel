@@ -1,0 +1,276 @@
+{
+  "checks": [
+    {
+      "kind": "host",
+      "command": [
+        "python3",
+        "-B",
+        "scripts/sql_acceptance.py",
+        "--binary",
+        "/private/tmp/cuberel-f8-release/release/examples/sql_acceptance",
+        "--out",
+        "/private/tmp/cuberel-m4-final-reject-host",
+        "--manifest",
+        "/private/tmp/cuberel-m4-final/reject-host.json",
+        "--backends",
+        "metal",
+        "--warm",
+        "1"
+      ],
+      "returncode": 1,
+      "complete": false,
+      "reason": "shared host_bytes admission rejection"
+    },
+    {
+      "kind": "device",
+      "command": [
+        "python3",
+        "-B",
+        "scripts/sql_acceptance.py",
+        "--binary",
+        "/private/tmp/cuberel-f8-release/release/examples/sql_acceptance",
+        "--out",
+        "/private/tmp/cuberel-m4-final-reject-device",
+        "--manifest",
+        "/private/tmp/cuberel-m4-final/reject-device.json",
+        "--backends",
+        "metal",
+        "--warm",
+        "1"
+      ],
+      "returncode": 1,
+      "complete": false,
+      "reason": "shared device_bytes admission rejection"
+    }
+  ],
+  "cases": {
+    "host": {
+      "manifest": {
+        "version": 1,
+        "description": "Expected logical host budget rejection; no successful timing claim.",
+        "cases": [
+          {
+            "id": "reject-host",
+            "workload": "aggregate",
+            "rows": 8388608,
+            "pass_percent": 50,
+            "null_percent": 20,
+            "batches": 1,
+            "partitions": 1,
+            "batch_sizes": [
+              1048576
+            ],
+            "readback_modes": [
+              "batched"
+            ],
+            "shared_host_bytes": 268435456,
+            "shared_device_bytes": 67108864
+          }
+        ]
+      },
+      "environment": {
+        "created_utc": "2026-11-24T01:59:48.071401+00:00",
+        "command": [
+          "scripts/sql_acceptance.py",
+          "--binary",
+          "/private/tmp/cuberel-f8-release/release/examples/sql_acceptance",
+          "--out",
+          "/private/tmp/cuberel-m4-final-reject-host",
+          "--manifest",
+          "/private/tmp/cuberel-m4-final/reject-host.json",
+          "--backends",
+          "metal",
+          "--warm",
+          "1"
+        ],
+        "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
+        "hardware": "Apple M1\n17179869184",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t15.5\nBuildVersion:\t\t24F74",
+        "rust": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+        "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+        "base_commit": "e69eaf183ef1857585b76e67167d797dbf828b84",
+        "working_diff": "",
+        "working_status": "",
+        "source_sha256": {
+          "examples/sql_acceptance.rs": "5d158145521a37817bef4ad88285ea690f617b04feeb1ff20e98ef3e060bec3d",
+          "examples/support/sql_acceptance.rs": "3e1eff82a98e7843dd04f80a9b605ec46e6ce7a151d8830f15955392ad3125db",
+          "examples/support/sql_acceptance_limits.rs": "e8d8e28e50bc96675e28820912ed06c419ff16fc9fbd99870e54201d41ab7921",
+          "scripts/sql_acceptance.py": "cd18dbe7f3cbe6eeba6c98e589ebec1e58fe652448855ceaa738277ebdc05525",
+          "Cargo.toml": "a7a7f7eeee0680aad69c846fb27a828aa686209dd386118955c78605c8f081bd",
+          "Cargo.lock": "ec320e17d2d7fd62b2532fbc005f5d5fa80bd4e6d42329e72f748949011f0b49"
+        },
+        "library_sha256": {
+          "src/abi.rs": "efcef9de67766e4bac57539bb73d380a5c5cf45e52a49b32a7da7d7b4ff59dfe",
+          "src/aggregate/fused.rs": "2dbc2c83fff1800caa548c13146fcc45b183641c6ea73f96c7387dbe498e0f7b",
+          "src/aggregate.rs": "6932a5e1a7a39531766e3f9986fe8ca83abfb46b3692937928ac80de150713ef",
+          "src/arrow.rs": "80a8963e518a7aa219334c1a227472b65ae16fe23689f0867d9abff592d94628",
+          "src/budget.rs": "4b2b341fd6dcb18ca4753449f3bb76e26834e256821765486d6d6e65e9965448",
+          "src/completion.rs": "a8992df17337374850314338b0d36f930f30ffd9d7d0ab6fd971fcfa775d1e5a",
+          "src/datafusion/batch_policy.rs": "9dc65ac5250e140a57932652db9c91197486d61e45b95add29eda234ca7cf673",
+          "src/datafusion/capability.rs": "0338b3c1675c642585cf58c701e2dde5d051404c94f03ba3ea091ce7a22d7437",
+          "src/datafusion/diagnostics.rs": "9335578c056c277b08924596a416626472b26dfd68b6a8aeec1b89e290f0f9c1",
+          "src/datafusion/exec.rs": "b85addf716eb073df1f9e571119ac46d1328d0f9d1cd9e673862d0806a33c731",
+          "src/datafusion/fragment.rs": "877c70c32c495767bd748155be01edb163389b7de89cccb9aba5ae62f1ecaf95",
+          "src/datafusion/global.rs": "cdcf9a9641fe5b714dcaedd5e4fde3e38fe9f0d1b1a14901f9876c16fbe02011",
+          "src/datafusion/mod.rs": "8517a33c1c1a8c36d4e3513ac544f3cb39a9491986706925e4c319de88c118d6",
+          "src/datafusion/observation.rs": "f30f7f22d59a461b99de9b9d3418256ea43248fd771b0cf34b551f325ee83246",
+          "src/datafusion/resources.rs": "95ae9914a216d5b21ec2bb8a74a1b25e4644153cd3e86bc6ef2387f30bafe138",
+          "src/device_abi.rs": "65d561fe38a731fb8c1434a8bb81fb75cadfa7573ac961c2ec7e02fa5c20e2a4",
+          "src/emitter.rs": "348be12d3793d8bc8bdb8df53892c8d18d8ecd1df3d2b15bbe6610c1eb2f7c84",
+          "src/error.rs": "3f8bd8dcecb97c59eb9618221f6975c154faf136128dcc38ab8d47646187a9e9",
+          "src/executor.rs": "a3695e665ea07f4b6f95872cbf7dfa9f846aeb3ad3d008f9512e6f311b37ecb1",
+          "src/expr.rs": "b793b7d36d9d2eb400dd7fcf7c317de8650c7d63d8be336eb013a869b913df77",
+          "src/input.rs": "86268e4e6ba474ea572dd97e4c24d8303309364feedba3c42ca171948eac8d25",
+          "src/ir_support.rs": "39c75018f02547ba6e86517cd75903209df955a9cc1ec57c5d96bb3b15836591",
+          "src/lib.rs": "fc3a8312a837acc4de80ddf72f6ff2b206ef328216e7d7e2e8de9734a5ab67c2",
+          "src/pipeline.rs": "3d5143e129199edf45a3cd21186a8848e71532d03b17ba46d540353130aba521",
+          "src/reduction_kernel.rs": "adb29d973c5cee7b8a193dc2a804c0bba8834c98ca67a71135173088e73b689b",
+          "src/resident.rs": "5de6fdd6210616f509bd3b3abc8f11158c91010cfbb8d08c05255ed5ccf7cab1",
+          "src/schema.rs": "c7df9969463a03e354c1d79070e6b1f8241c4f06a382c183f7ebda69ec6bef31",
+          "src/selected.rs": "90c68ff64edccd7d50243a82f267063a7943b30326652d08da5d84c2d2171ae5",
+          "src/selection/retirement_tests.rs": "af50799350dd272308fb312989484cdfb6aa6ada52f4b85070318ed0c368c119",
+          "src/selection.rs": "097e711e68b9e92a0fba76cb2a575750ce2ed85027ce4505362741f58b7e73e1",
+          "src/selection_kernel.rs": "a9d3cfea8454511bb3fc34bc9bf739609059e2f6b3dcaec477f128a41b5ce39a"
+        },
+        "binary_sha256": "488fd1e7942932f4b0d79f33de7b34697f90aa8821e58f8be6599c3b686b73ca",
+        "binary": "/private/tmp/cuberel-f8-release/release/examples/sql_acceptance",
+        "profile": "release (build command recorded in report)",
+        "environment": {},
+        "warm_samples": 1,
+        "repeats": 1,
+        "batch_sizes": [
+          8192
+        ],
+        "batch_study": false,
+        "readback_modes": [
+          "scalar"
+        ],
+        "study_rows": null,
+        "manifest_description": "Expected logical host budget rejection; no successful timing claim.",
+        "manifest_sha256": "3ac2364154115f5b95f7cb9fcb1245b1548d71db1cfc2c88672e7c2e321656d7",
+        "note": "sequential processes; OS/driver caches not cleared; no concurrent queries"
+      },
+      "logs": {
+        "reject-host-metal-sql-aggregate-8388608-50-20-1-1-repeat1-batch1048576-batched.log": "command=[\"/private/tmp/cuberel-f8-release/release/examples/sql_acceptance\", \"metal\", \"sql\", \"aggregate\", \"8388608\", \"50\", \"20\", \"1\", \"1\", \"1\", \"1048576\", \"batched\", \"--shared-host-bytes\", \"268435456\", \"--shared-device-bytes\", \"67108864\"]\nsql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)\ncase=Case { rows: 8388608, pass: 50, nulls: 20, batches: 1, partitions: 1 }\nbackend=metal path=sql init_ms=51.699292\nProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]\n  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=8388608, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 67108864, max_host_bytes: 268435456, max_requests: 16, max_streams: 64 }, batch_policy=None, aggregate_readback=Batched\n    DataSourceExec: partitions=1, partition_sizes=[2]\n\nError: Context(\"Cuberel fragment=root.0 partition=0 batch=0\", External(Exhausted { resource: \"host_bytes\", required: 304103192, limit: 268435456 }))\n",
+        "runner.log": "[1/1] reject-host-metal-sql-aggregate-8388608-50-20-1-1-repeat1-batch1048576-batched\nTraceback (most recent call last):\n  File \"/Users/devilhill/Codes/cuberel/scripts/sql_acceptance.py\", line 399, in <module>\n    main()\n    ~~~~^^\n  File \"/Users/devilhill/Codes/cuberel/scripts/sql_acceptance.py\", line 356, in main\n    raise RuntimeError(f\"case failed ({completed.returncode}): {name}; see log\")\nRuntimeError: case failed (1): reject-host-metal-sql-aggregate-8388608-50-20-1-1-repeat1-batch1048576-batched; see log\n"
+      },
+      "stdout_csv": {
+        "reject-host-metal-sql-aggregate-8388608-50-20-1-1-repeat1-batch1048576-batched.csv": "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,session_batch_size,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes,input_batches,completed_requests,actual_fused_requests,actual_unfused_requests,arrow_adapt_ns,resource_preflight_ns,upload_submit_ns,complete_export_ns,aggregate_readback_mode,readback_buffers,shared_host_limit_bytes,shared_device_limit_bytes,peak_requests\n"
+      }
+    },
+    "device": {
+      "manifest": {
+        "version": 1,
+        "description": "Expected logical device budget rejection; no successful timing claim.",
+        "cases": [
+          {
+            "id": "reject-device",
+            "workload": "aggregate",
+            "rows": 1048576,
+            "pass_percent": 50,
+            "null_percent": 20,
+            "batches": 1,
+            "partitions": 1,
+            "batch_sizes": [
+              65536
+            ],
+            "readback_modes": [
+              "batched"
+            ],
+            "shared_host_bytes": 268435456,
+            "shared_device_bytes": 1
+          }
+        ]
+      },
+      "environment": {
+        "created_utc": "2026-11-24T01:59:48.539447+00:00",
+        "command": [
+          "scripts/sql_acceptance.py",
+          "--binary",
+          "/private/tmp/cuberel-f8-release/release/examples/sql_acceptance",
+          "--out",
+          "/private/tmp/cuberel-m4-final-reject-device",
+          "--manifest",
+          "/private/tmp/cuberel-m4-final/reject-device.json",
+          "--backends",
+          "metal",
+          "--warm",
+          "1"
+        ],
+        "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
+        "hardware": "Apple M1\n17179869184",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t15.5\nBuildVersion:\t\t24F74",
+        "rust": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+        "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+        "base_commit": "e69eaf183ef1857585b76e67167d797dbf828b84",
+        "working_diff": "",
+        "working_status": "",
+        "source_sha256": {
+          "examples/sql_acceptance.rs": "5d158145521a37817bef4ad88285ea690f617b04feeb1ff20e98ef3e060bec3d",
+          "examples/support/sql_acceptance.rs": "3e1eff82a98e7843dd04f80a9b605ec46e6ce7a151d8830f15955392ad3125db",
+          "examples/support/sql_acceptance_limits.rs": "e8d8e28e50bc96675e28820912ed06c419ff16fc9fbd99870e54201d41ab7921",
+          "scripts/sql_acceptance.py": "cd18dbe7f3cbe6eeba6c98e589ebec1e58fe652448855ceaa738277ebdc05525",
+          "Cargo.toml": "a7a7f7eeee0680aad69c846fb27a828aa686209dd386118955c78605c8f081bd",
+          "Cargo.lock": "ec320e17d2d7fd62b2532fbc005f5d5fa80bd4e6d42329e72f748949011f0b49"
+        },
+        "library_sha256": {
+          "src/abi.rs": "efcef9de67766e4bac57539bb73d380a5c5cf45e52a49b32a7da7d7b4ff59dfe",
+          "src/aggregate/fused.rs": "2dbc2c83fff1800caa548c13146fcc45b183641c6ea73f96c7387dbe498e0f7b",
+          "src/aggregate.rs": "6932a5e1a7a39531766e3f9986fe8ca83abfb46b3692937928ac80de150713ef",
+          "src/arrow.rs": "80a8963e518a7aa219334c1a227472b65ae16fe23689f0867d9abff592d94628",
+          "src/budget.rs": "4b2b341fd6dcb18ca4753449f3bb76e26834e256821765486d6d6e65e9965448",
+          "src/completion.rs": "a8992df17337374850314338b0d36f930f30ffd9d7d0ab6fd971fcfa775d1e5a",
+          "src/datafusion/batch_policy.rs": "9dc65ac5250e140a57932652db9c91197486d61e45b95add29eda234ca7cf673",
+          "src/datafusion/capability.rs": "0338b3c1675c642585cf58c701e2dde5d051404c94f03ba3ea091ce7a22d7437",
+          "src/datafusion/diagnostics.rs": "9335578c056c277b08924596a416626472b26dfd68b6a8aeec1b89e290f0f9c1",
+          "src/datafusion/exec.rs": "b85addf716eb073df1f9e571119ac46d1328d0f9d1cd9e673862d0806a33c731",
+          "src/datafusion/fragment.rs": "877c70c32c495767bd748155be01edb163389b7de89cccb9aba5ae62f1ecaf95",
+          "src/datafusion/global.rs": "cdcf9a9641fe5b714dcaedd5e4fde3e38fe9f0d1b1a14901f9876c16fbe02011",
+          "src/datafusion/mod.rs": "8517a33c1c1a8c36d4e3513ac544f3cb39a9491986706925e4c319de88c118d6",
+          "src/datafusion/observation.rs": "f30f7f22d59a461b99de9b9d3418256ea43248fd771b0cf34b551f325ee83246",
+          "src/datafusion/resources.rs": "95ae9914a216d5b21ec2bb8a74a1b25e4644153cd3e86bc6ef2387f30bafe138",
+          "src/device_abi.rs": "65d561fe38a731fb8c1434a8bb81fb75cadfa7573ac961c2ec7e02fa5c20e2a4",
+          "src/emitter.rs": "348be12d3793d8bc8bdb8df53892c8d18d8ecd1df3d2b15bbe6610c1eb2f7c84",
+          "src/error.rs": "3f8bd8dcecb97c59eb9618221f6975c154faf136128dcc38ab8d47646187a9e9",
+          "src/executor.rs": "a3695e665ea07f4b6f95872cbf7dfa9f846aeb3ad3d008f9512e6f311b37ecb1",
+          "src/expr.rs": "b793b7d36d9d2eb400dd7fcf7c317de8650c7d63d8be336eb013a869b913df77",
+          "src/input.rs": "86268e4e6ba474ea572dd97e4c24d8303309364feedba3c42ca171948eac8d25",
+          "src/ir_support.rs": "39c75018f02547ba6e86517cd75903209df955a9cc1ec57c5d96bb3b15836591",
+          "src/lib.rs": "fc3a8312a837acc4de80ddf72f6ff2b206ef328216e7d7e2e8de9734a5ab67c2",
+          "src/pipeline.rs": "3d5143e129199edf45a3cd21186a8848e71532d03b17ba46d540353130aba521",
+          "src/reduction_kernel.rs": "adb29d973c5cee7b8a193dc2a804c0bba8834c98ca67a71135173088e73b689b",
+          "src/resident.rs": "5de6fdd6210616f509bd3b3abc8f11158c91010cfbb8d08c05255ed5ccf7cab1",
+          "src/schema.rs": "c7df9969463a03e354c1d79070e6b1f8241c4f06a382c183f7ebda69ec6bef31",
+          "src/selected.rs": "90c68ff64edccd7d50243a82f267063a7943b30326652d08da5d84c2d2171ae5",
+          "src/selection/retirement_tests.rs": "af50799350dd272308fb312989484cdfb6aa6ada52f4b85070318ed0c368c119",
+          "src/selection.rs": "097e711e68b9e92a0fba76cb2a575750ce2ed85027ce4505362741f58b7e73e1",
+          "src/selection_kernel.rs": "a9d3cfea8454511bb3fc34bc9bf739609059e2f6b3dcaec477f128a41b5ce39a"
+        },
+        "binary_sha256": "488fd1e7942932f4b0d79f33de7b34697f90aa8821e58f8be6599c3b686b73ca",
+        "binary": "/private/tmp/cuberel-f8-release/release/examples/sql_acceptance",
+        "profile": "release (build command recorded in report)",
+        "environment": {},
+        "warm_samples": 1,
+        "repeats": 1,
+        "batch_sizes": [
+          8192
+        ],
+        "batch_study": false,
+        "readback_modes": [
+          "scalar"
+        ],
+        "study_rows": null,
+        "manifest_description": "Expected logical device budget rejection; no successful timing claim.",
+        "manifest_sha256": "d3522c4127dda46b9bbc70c277720f7c5e0085b76f1df3899fc18312a9e5f404",
+        "note": "sequential processes; OS/driver caches not cleared; no concurrent queries"
+      },
+      "logs": {
+        "reject-device-metal-sql-aggregate-1048576-50-20-1-1-repeat1-batch65536-batched.log": "command=[\"/private/tmp/cuberel-f8-release/release/examples/sql_acceptance\", \"metal\", \"sql\", \"aggregate\", \"1048576\", \"50\", \"20\", \"1\", \"1\", \"1\", \"65536\", \"batched\", \"--shared-host-bytes\", \"268435456\", \"--shared-device-bytes\", \"1\"]\nsql=SELECT sum(y) AS total,count(*) AS n,count(y) AS valid,min(y) AS lo,max(y) AS hi FROM t WHERE x < CAST(50 AS INT)\ncase=Case { rows: 1048576, pass: 50, nulls: 20, batches: 1, partitions: 1 }\nbackend=metal path=sql init_ms=55.385250\nProjectionExec: expr=[sum(t.y)@0 as total, count(Int64(1))@1 as n, count(t.y)@2 as valid, min(t.y)@3 as lo, max(t.y)@4 as hi]\n  CubeAggregateExec: global=true, aggregates=5, filters=1, input_upper_bound=1048576, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id=root.0, device=metal, per_batch_estimate=runtime, shared_limits=SharedLimits { max_device_bytes: 1, max_host_bytes: 268435456, max_requests: 16, max_streams: 64 }, batch_policy=None, aggregate_readback=Batched\n    DataSourceExec: partitions=1, partition_sizes=[2]\n\nError: Context(\"Cuberel fragment=root.0 partition=0 batch=0\", External(Exhausted { resource: \"device_bytes\", required: 1094380, limit: 1 }))\n",
+        "runner.log": "[1/1] reject-device-metal-sql-aggregate-1048576-50-20-1-1-repeat1-batch65536-batched\nTraceback (most recent call last):\n  File \"/Users/devilhill/Codes/cuberel/scripts/sql_acceptance.py\", line 399, in <module>\n    main()\n    ~~~~^^\n  File \"/Users/devilhill/Codes/cuberel/scripts/sql_acceptance.py\", line 356, in main\n    raise RuntimeError(f\"case failed ({completed.returncode}): {name}; see log\")\nRuntimeError: case failed (1): reject-device-metal-sql-aggregate-1048576-50-20-1-1-repeat1-batch65536-batched; see log\n"
+      },
+      "stdout_csv": {
+        "reject-device-metal-sql-aggregate-1048576-50-20-1-1-repeat1-batch65536-batched.csv": "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,session_batch_size,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes,input_batches,completed_requests,actual_fused_requests,actual_unfused_requests,arrow_adapt_ns,resource_preflight_ns,upload_submit_ns,complete_export_ns,aggregate_readback_mode,readback_buffers,shared_host_limit_bytes,shared_device_limit_bytes,peak_requests\n"
+      }
+    }
+  }
+}

@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "description": "Synthetic M4 extended evaluation. Ordinary host-input SQL, explicit 256 MiB logical adapter host / 64 MiB device caps, exact independent oracle; no real application latency requirement or general GPU speedup claim.",
+  "cases": [
+    {
+      "id": "primary",
+      "workload": "aggregate",
+      "rows": 1048576,
+      "pass_percent": 50,
+      "null_percent": 20,
+      "batches": 1,
+      "partitions": 1,
+      "batch_sizes": [
+        8192,
+        65536,
+        262144
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "scale8m",
+      "workload": "aggregate",
+      "rows": 8388608,
+      "pass_percent": 50,
+      "null_percent": 20,
+      "batches": 1,
+      "partitions": 1,
+      "batch_sizes": [
+        65536,
+        262144
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "layout-two-partitions",
+      "workload": "aggregate",
+      "rows": 1048576,
+      "pass_percent": 50,
+      "null_percent": 20,
+      "batches": 8,
+      "partitions": 2,
+      "batch_sizes": [
+        65536,
+        262144
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "full-select-no-null",
+      "workload": "aggregate",
+      "rows": 1048576,
+      "pass_percent": 100,
+      "null_percent": 0,
+      "batches": 1,
+      "partitions": 1,
+      "batch_sizes": [
+        65536
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "low-select",
+      "workload": "aggregate",
+      "rows": 1048576,
+      "pass_percent": 1,
+      "null_percent": 20,
+      "batches": 1,
+      "partitions": 1,
+      "batch_sizes": [
+        65536
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "project-output",
+      "workload": "project",
+      "rows": 65536,
+      "pass_percent": 50,
+      "null_percent": 20,
+      "batches": 1,
+      "partitions": 1,
+      "batch_sizes": [
+        65536
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "mixed-cpu-boundary",
+      "workload": "mixed",
+      "rows": 65536,
+      "pass_percent": 50,
+      "null_percent": 20,
+      "batches": 1,
+      "partitions": 1,
+      "batch_sizes": [
+        65536
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    }
+  ]
+}

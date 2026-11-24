@@ -30,6 +30,7 @@ The [SQL lifecycle contract](docs/sql-lifecycle.md) specifies shared resource
 limits, consumer-owned output reservations, backpressure and cancellation drain.
 See [opt-in batched aggregate readback](docs/aggregate-readback.md) for the host scalar scheduling option and its measured limits.
 Saved [SQL workload profiles](docs/sql-acceptance-profiles.md) make source layouts and logical memory budgets reproducible.
+The [M4 evaluation](docs/benchmarks/sql-m4-acceptance.md) reports local improvements and the still-unmet CPU performance gate.
 See the [explicit bounded batch policy](docs/sql-batch-policy.md) for source-size tuning and pre-upload request-row limits.
 See [SQL diagnostics](docs/sql-diagnostics.md) for placement reports, CPU-only and
 required-candidate modes, EXPLAIN fields and measured fragment counters/timings.

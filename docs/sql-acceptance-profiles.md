@@ -106,3 +106,6 @@ successful measurement:
   metal sql aggregate 8388608 50 20 1 1 1 1048576 batched \
   --shared-host-bytes 268435456 --shared-device-bytes 67108864
 ```
+
+The [M4 expanded evaluation](benchmarks/sql-m4-acceptance.md) records the measured
+results, expected budget failures and the CPU-performance gate separately.

@@ -1,0 +1,186 @@
+{
+  "version": 1,
+  "description": "Synthetic correctness/reference profile, not a performance promotion: CPU and Metal tile edges, empty/all-NULL/no-match, sliced Arrow arrays, mixed Sort/Limit and multiple source partitions.",
+  "cases": [
+    {
+      "id": "empty",
+      "workload": "aggregate",
+      "rows": 0,
+      "pass_percent": 100,
+      "null_percent": 0,
+      "batches": 3,
+      "partitions": 2,
+      "batch_sizes": [
+        64
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "one",
+      "workload": "aggregate",
+      "rows": 1,
+      "pass_percent": 100,
+      "null_percent": 0,
+      "batches": 1,
+      "partitions": 1,
+      "batch_sizes": [
+        64
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "tile63-low-select",
+      "workload": "aggregate",
+      "rows": 63,
+      "pass_percent": 1,
+      "null_percent": 20,
+      "batches": 3,
+      "partitions": 2,
+      "batch_sizes": [
+        64
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "tile64",
+      "workload": "aggregate",
+      "rows": 64,
+      "pass_percent": 100,
+      "null_percent": 0,
+      "batches": 1,
+      "partitions": 1,
+      "batch_sizes": [
+        64
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "tile65-no-match",
+      "workload": "aggregate",
+      "rows": 65,
+      "pass_percent": 0,
+      "null_percent": 0,
+      "batches": 3,
+      "partitions": 2,
+      "batch_sizes": [
+        64
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "tile65-all-null",
+      "workload": "aggregate",
+      "rows": 65,
+      "pass_percent": 100,
+      "null_percent": 100,
+      "batches": 3,
+      "partitions": 2,
+      "batch_sizes": [
+        64
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "tile256",
+      "workload": "aggregate",
+      "rows": 256,
+      "pass_percent": 100,
+      "null_percent": 0,
+      "batches": 1,
+      "partitions": 1,
+      "batch_sizes": [
+        256
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "tile257",
+      "workload": "aggregate",
+      "rows": 257,
+      "pass_percent": 50,
+      "null_percent": 20,
+      "batches": 4,
+      "partitions": 2,
+      "batch_sizes": [
+        256
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "project-partitions",
+      "workload": "project",
+      "rows": 257,
+      "pass_percent": 100,
+      "null_percent": 20,
+      "batches": 4,
+      "partitions": 2,
+      "batch_sizes": [
+        64
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    },
+    {
+      "id": "mixed-partitions",
+      "workload": "mixed",
+      "rows": 257,
+      "pass_percent": 50,
+      "null_percent": 20,
+      "batches": 4,
+      "partitions": 2,
+      "batch_sizes": [
+        64
+      ],
+      "readback_modes": [
+        "scalar",
+        "batched"
+      ],
+      "shared_host_bytes": 268435456,
+      "shared_device_bytes": 67108864
+    }
+  ]
+}
