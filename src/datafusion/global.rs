@@ -457,6 +457,8 @@ impl GlobalPlan {
         lease.device(estimate.device_bytes)?;
         drop(preflight_timer);
         drop(prepare_timer);
+        let device_window =
+            crate::profiling::DeviceWindow::begin(&executor.client, batch.num_rows() != 0);
         let _execute_timer = observation.execute_export.timer();
         let submit_timer = observation.upload_submit.timer();
         let result = executor
@@ -464,14 +466,20 @@ impl GlobalPlan {
             .map_err(execution)?;
         drop(submit_timer);
         observation.fusion(result.graph());
-        let _complete_timer = observation.complete_export.timer();
-        Ok(result
+        let complete_timer = observation.complete_export.timer();
+        let values = result
             .materialize()
             .map_err(execution)?
             .aggregates
             .into_iter()
             .map(|r| r.value)
-            .collect())
+            .collect();
+        drop(complete_timer);
+        drop(_execute_timer);
+        if let Some(window) = device_window {
+            window.finish();
+        }
+        Ok(values)
     }
     fn output(&self, states: Vec<AggregateValue>) -> Result<RecordBatch> {
         let arrays = states
@@ -554,7 +562,7 @@ impl DisplayAs for CubeAggregateExec {
     fn fmt_as(&self, _kind: DisplayFormatType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "CubeAggregateExec: global=true, aggregates={}, filters={}, input_upper_bound={}, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}, batch_policy={:?}, aggregate_readback={:?}",
+            "CubeAggregateExec: global=true, aggregates={}, filters={}, input_upper_bound={}, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}, batch_policy={:?}, aggregate_readback={:?}, profiling={:?}",
             self.plan.kinds.len(),
             self.plan.inspection.filters,
             self.plan.inspection.input_upper_bound,
@@ -562,7 +570,8 @@ impl DisplayAs for CubeAggregateExec {
             self.engine.executor.client.name(),
             self.engine.resources.limits(),
             self.engine.batch_policy,
-            self.engine.executor.aggregate_readback_mode()
+            self.engine.executor.aggregate_readback_mode(),
+            self.engine.profiling_mode
         )
     }
 }
@@ -633,8 +642,12 @@ impl ExecutionPlan for CubeAggregateExec {
         let plan = self.plan.clone();
         let engine = self.engine.clone();
         let cancellation = CancelOnDrop(Arc::new(AtomicBool::new(false)));
-        let observation =
-            super::observation::Observation::cached(&self.observations, &self.metrics, 0);
+        let observation = super::observation::Observation::cached(
+            &self.observations,
+            &self.metrics,
+            0,
+            self.engine.profiling_mode,
+        );
         let stream_observation = observation.clone();
         let fragment_id = self.id.clone();
         let stream = futures::stream::once(async move {
@@ -691,10 +704,30 @@ impl ExecutionPlan for CubeAggregateExec {
                                 Box::new(e),
                             )
                         })?;
-                    merge(&plan.kinds, &mut states, values)?;
+                    let merge_start = (engine.profiling_mode != super::ProfilingMode::Off)
+                        .then(std::time::Instant::now);
+                    let merged = merge(&plan.kinds, &mut states, values);
+                    if let Some(start) = merge_start {
+                        stream_observation.add(
+                            "profile_global_merge_ns",
+                            start.elapsed().as_nanos().min(u64::MAX as u128) as u64,
+                        );
+                    }
+                    merged?;
                     ordinal += 1;
                 }
-                stream_lease.output(plan.output(states)?)
+                let output_start = (engine.profiling_mode != super::ProfilingMode::Off)
+                    .then(std::time::Instant::now);
+                let output = plan
+                    .output(states)
+                    .and_then(|batch| stream_lease.output(batch));
+                if let Some(start) = output_start {
+                    stream_observation.add(
+                        "profile_global_output_ns",
+                        start.elapsed().as_nanos().min(u64::MAX as u128) as u64,
+                    );
+                }
+                output
             }
             .await;
             stream_lease.finish(result.is_err());

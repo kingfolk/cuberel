@@ -12,6 +12,7 @@ impl ExitContext {
 }
 pub(crate) fn synchronize(client: &Client, handles: &[Handle]) -> Result<(), ExecutionError> {
     if !handles.is_empty() {
+        let _profile = crate::profiling::span(crate::profiling::Metric::CompletionSyncNs);
         block_on(client.sync_buffers(handles.iter())).map_err(ExecutionError::Backend)?;
     }
     Ok(())

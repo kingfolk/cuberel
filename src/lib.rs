@@ -56,6 +56,7 @@ mod expr;
 mod input;
 mod ir_support;
 mod pipeline;
+mod profiling;
 mod reduction_kernel;
 mod resident;
 mod schema;

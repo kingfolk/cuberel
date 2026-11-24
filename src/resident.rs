@@ -74,7 +74,11 @@ impl ExecutionCounters {
         self.reads.fetch_add(1, Ordering::Relaxed);
         self.read_buffers
             .fetch_add(expected as u64, Ordering::Relaxed);
-        let data = client.read(handles).map_err(ExecutionError::Backend)?;
+        let data = {
+            let _profile = crate::profiling::span(crate::profiling::Metric::ReadbackApiNs);
+            client.read(handles).map_err(ExecutionError::Backend)?
+        };
+        let _decode = crate::profiling::span(crate::profiling::Metric::ScalarDecodeNs);
         if data.len() != expected {
             return Err(ExecutionError::InvalidAggregation {
                 reason: "unexpected scalar readback plane count",
@@ -324,6 +328,7 @@ impl Executor {
         self.counters
             .allocation_bytes
             .fetch_add(bytes as u64, Ordering::Relaxed);
+        let _profile = crate::profiling::span(crate::profiling::Metric::RuntimeAllocateNs);
         self.client.empty(bytes)
     }
     pub(crate) fn upload_bytes(&self, bytes: &[u8]) -> Handle {
@@ -331,7 +336,10 @@ impl Executor {
         self.counters
             .allocation_bytes
             .fetch_add(bytes.len() as u64, Ordering::Relaxed);
-        let handle = self.client.create_from_slice(bytes);
+        let handle = {
+            let _profile = crate::profiling::span(crate::profiling::Metric::RuntimeUploadNs);
+            self.client.create_from_slice(bytes)
+        };
         self.counters.uploads.fetch_add(1, Ordering::Relaxed);
         self.counters
             .upload_bytes
@@ -369,10 +377,29 @@ impl Executor {
             let (values, flags) = if rows == 0 {
                 (None, None)
             } else {
-                let values = self.upload_bytes(&data.to_bytes());
-                let flags: Vec<u8> = (0..batch.row_count())
-                    .flat_map(|i| validity.map_or(1, |v| v[i]).to_ne_bytes())
-                    .collect();
+                let bytes = {
+                    let _profile = crate::profiling::span(crate::profiling::Metric::ValueEncodeNs);
+                    let bytes = data.to_bytes();
+                    crate::profiling::add(
+                        crate::profiling::Metric::ValueEncodeBytes,
+                        bytes.len() as u64,
+                    );
+                    bytes
+                };
+                let values = self.upload_bytes(&bytes);
+                drop(bytes);
+                let flags: Vec<u8> = {
+                    let _profile =
+                        crate::profiling::span(crate::profiling::Metric::ValidityEncodeNs);
+                    let flags: Vec<u8> = (0..batch.row_count())
+                        .flat_map(|i| validity.map_or(1, |v| v[i]).to_ne_bytes())
+                        .collect();
+                    crate::profiling::add(
+                        crate::profiling::Metric::ValidityEncodeBytes,
+                        flags.len() as u64,
+                    );
+                    flags
+                };
                 (Some(values), Some(self.upload_bytes(&flags)))
             };
             columns.insert(

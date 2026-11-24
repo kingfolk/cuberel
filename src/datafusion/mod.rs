@@ -11,6 +11,7 @@ mod fragment;
 mod global;
 mod observation;
 mod resources;
+pub use crate::profiling::ProfilingMode;
 pub use batch_policy::{BatchPolicy, BatchPolicyError};
 pub use capability::{TranslatedExpression, Unsupported, translate_expression};
 pub use diagnostics::{
@@ -34,6 +35,7 @@ use ::datafusion::{
 #[derive(Clone, Debug, Default)]
 pub struct AdapterOptions {
     pub enabled: bool,
+    pub(crate) profiling_mode: ProfilingMode,
     pub(crate) batch_policy: Option<BatchPolicy>,
     pub(crate) engine: Option<Arc<exec::Engine>>,
     pub(crate) placement_mode: PlacementMode,
@@ -44,6 +46,7 @@ impl AdapterOptions {
     pub fn planning_only() -> Self {
         Self {
             enabled: true,
+            profiling_mode: ProfilingMode::Off,
             batch_policy: None,
             engine: None,
             placement_mode: PlacementMode::OptIn,
@@ -59,6 +62,7 @@ impl AdapterOptions {
     pub fn with_resources(executor: crate::Executor, resources: SharedResources) -> Self {
         Self {
             enabled: true,
+            profiling_mode: ProfilingMode::Off,
             batch_policy: None,
             engine: Some(Arc::new(exec::Engine::with_resources(executor, resources))),
             placement_mode: PlacementMode::OptIn,
@@ -72,6 +76,16 @@ impl AdapterOptions {
         self.batch_policy = Some(policy);
         if let Some(engine) = &mut self.engine {
             Arc::make_mut(engine).batch_policy = Some(policy);
+        }
+        self
+    }
+    /// Enable fine-grained SQL worker diagnostics. Host adds no synchronization;
+    /// Device adds coarse backend windows and boundary synchronization. Existing
+    /// rewritten plans retain their engine; rebuild queries to change this mode.
+    pub fn with_profiling_mode(mut self, mode: ProfilingMode) -> Self {
+        self.profiling_mode = mode;
+        if let Some(engine) = &mut self.engine {
+            Arc::make_mut(engine).profiling_mode = mode;
         }
         self
     }

@@ -453,6 +453,7 @@ impl SubmittedExpression {
         counters: &ExecutionCounters,
     ) -> Result<(), ExecutionError> {
         if self.rows != 0 {
+            let _profile = crate::profiling::span(crate::profiling::Metric::CompletionSyncNs);
             cubecl::future::block_on(client.sync_buffers(self.retained.iter()))
                 .map_err(ExecutionError::Backend)?;
         }
@@ -540,7 +541,10 @@ pub(crate) fn read_plane(
     handle: Handle,
     expected: usize,
 ) -> Result<Bytes, ExecutionError> {
-    let bytes = client.read_one(handle).map_err(ExecutionError::Backend)?;
+    let bytes = {
+        let _profile = crate::profiling::span(crate::profiling::Metric::ReadbackApiNs);
+        client.read_one(handle).map_err(ExecutionError::Backend)?
+    };
     if bytes.len() != expected {
         return Err(ExecutionError::OutputLength {
             expected,

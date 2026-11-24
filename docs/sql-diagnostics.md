@@ -148,3 +148,6 @@ the acceptance CSV marks those fields unavailable rather than inventing times.
 `observed_readback_buffers` counts attempted explicit buffer descriptors, distinct
 from read API calls and validated bytes. The configured aggregate readback mode
 is visible in placement/EXPLAIN; see [mode semantics and limits](aggregate-readback.md).
+
+Fine-grained host scopes and optional device windows are available through the
+[explicit SQL profiling mode](sql-detailed-profiling.md); default coarse metrics remain unchanged.

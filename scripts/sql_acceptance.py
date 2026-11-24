@@ -70,6 +70,20 @@ I32_MAX = 2**31 - 1
 CSV_IDENTITY = ("backend", "path", "workload", "rows", "pass_percent", "null_percent",
                 "batches", "partitions", "session_batch_size")
 TIMING_COLUMNS = ("init_ms", "prepare_ms", "execute_ms", "total_ms")
+PROFILE_COLUMNS = (
+    "profile_validity_expand_ns", "profile_validity_expand_bytes",
+    "profile_value_encode_ns", "profile_value_encode_bytes",
+    "profile_validity_encode_ns", "profile_validity_encode_bytes",
+    "profile_runtime_upload_ns", "profile_runtime_allocate_ns",
+    "profile_pipeline_prepare_ns", "profile_pipeline_submit_ns",
+    "profile_completion_sync_ns", "profile_readback_api_ns",
+    "profile_scalar_decode_ns", "profile_arrow_export_ns",
+    "profile_device_window_ns", "profile_device_windows",
+    "profile_device_unavailable", "profile_device_failed",
+    "profile_device_boundary_ns", "profile_graph_aggregate_partial",
+    "profile_graph_aggregate_merge", "profile_graph_other_kernels",
+    "profile_global_merge_ns", "profile_global_output_ns",
+)
 
 
 def _exact_int(value, name, low, high):
@@ -141,7 +155,7 @@ def load_manifest(path):
     return raw, {"version": 1, "description": document["description"], "cases": validated}
 
 
-def manifest_jobs(manifest, backends, repeats):
+def manifest_jobs(manifest, backends, repeats, profiling_modes=("off",)):
     """Expand a manifest with batch-study ordering and no DSL jobs."""
     jobs = []
     for case in manifest["cases"]:
@@ -152,15 +166,26 @@ def manifest_jobs(manifest, backends, repeats):
             backend_order = backends[offset:] + backends[:offset]
             mode_offset = (repeat - 1) % len(case["readback_modes"])
             mode_order = case["readback_modes"][mode_offset:] + case["readback_modes"][:mode_offset]
+            profile_offset = (repeat - 1) % len(profiling_modes)
+            profile_order = list(profiling_modes[profile_offset:]) + list(profiling_modes[:profile_offset])
             for batch_size in case["batch_sizes"]:
                 for backend in backend_order:
-                    modes = (mode_order if backend in ("cpu", "metal") else (None,))
-                    for mode in modes:
+                    if backend == "datafusion":
                         jobs.append({"backend": backend, "path": "sql", "case": case_tuple,
                                      "batch_size": batch_size, "repeat": repeat,
-                                     "readback_mode": mode, "case_id": case["id"],
+                                     "readback_mode": None, "profiling_mode": None,
+                                     "case_id": case["id"],
                                      "shared_host_bytes": case["shared_host_bytes"],
                                      "shared_device_bytes": case["shared_device_bytes"]})
+                    else:
+                        for mode in mode_order:
+                            for profile_mode in profile_order:
+                                jobs.append({"backend": backend, "path": "sql", "case": case_tuple,
+                                             "batch_size": batch_size, "repeat": repeat,
+                                             "readback_mode": mode, "profiling_mode": profile_mode,
+                                             "case_id": case["id"],
+                                             "shared_host_bytes": case["shared_host_bytes"],
+                                             "shared_device_bytes": case["shared_device_bytes"]})
     return jobs
 
 
@@ -170,6 +195,8 @@ def build_command(binary, job, warm_samples):
         command.append(str(job["batch_size"]))
     if job["readback_mode"] is not None:
         command.append(job["readback_mode"])
+    if job["path"] == "sql" and job["backend"] != "datafusion":
+        command.extend(["--profiling", job.get("profiling_mode") or "off"])
     if job.get("manifest"):
         command.extend(["--shared-host-bytes", str(job["shared_host_bytes"]),
                         "--shared-device-bytes", str(job["shared_device_bytes"])])
@@ -197,6 +224,41 @@ def validate_output(rows, job, warm_samples):
             mode = job["readback_mode"] or "scalar"
             if row.get("aggregate_readback_mode") != mode:
                 raise RuntimeError(f"unexpected aggregate readback mode: {name}")
+        expected_profile_mode = ("" if job["backend"] == "datafusion" or job["path"] == "dsl"
+                                 else job.get("profiling_mode") or "off")
+        if row.get("profiling_mode") != expected_profile_mode:
+            raise RuntimeError(f"unexpected profiling mode at sample {index}: {name}")
+        profile_values = {field: row.get(field, "") for field in PROFILE_COLUMNS}
+        if expected_profile_mode in ("", "off"):
+            if any(value != "" for value in profile_values.values()):
+                raise RuntimeError(f"profile metrics must be blank when profiling is off: {name}")
+        else:
+            for field in PROFILE_COLUMNS:
+                value = profile_values[field]
+                if expected_profile_mode == "host" and field == "profile_device_window_ns":
+                    if value != "":
+                        raise RuntimeError(f"host profiling GPU time must be blank: {name}")
+                    continue
+                if expected_profile_mode == "device" and field == "profile_device_window_ns":
+                    continue
+                if re.fullmatch(r"[0-9]+", value) is None:
+                    raise RuntimeError(f"invalid {field} for {expected_profile_mode} profiling: {name}")
+            windows = int(profile_values["profile_device_windows"])
+            unavailable = int(profile_values["profile_device_unavailable"])
+            failed = int(profile_values["profile_device_failed"])
+            if expected_profile_mode == "host":
+                host_only_zeros = ("profile_device_windows", "profile_device_unavailable",
+                                   "profile_device_failed", "profile_device_boundary_ns")
+                if any(int(profile_values[field]) != 0 for field in host_only_zeros):
+                    raise RuntimeError(f"host profiling device counters must be zero: {name}")
+            else:
+                gpu_time = profile_values["profile_device_window_ns"]
+                gpu_time_expected = windows > 0 and unavailable == 0 and failed == 0
+                if gpu_time_expected:
+                    if re.fullmatch(r"[0-9]+", gpu_time) is None or int(gpu_time) <= 0:
+                        raise RuntimeError(f"device profiling GPU time must be positive: {name}")
+                elif gpu_time != "":
+                    raise RuntimeError(f"device profiling GPU time must be blank without valid windows: {name}")
         for field in TIMING_COLUMNS:
             try:
                 value = float(row[field])
@@ -229,6 +291,8 @@ def main():
                         help="run aggregate 64K/1M/2M, one source batch, one partition, pass 50, NULL 20")
     parser.add_argument("--readback-modes", nargs="+", choices=["scalar", "batched"], default=["scalar"],
                         help="aggregate readback modes; nondefault modes require --batch-study")
+    parser.add_argument("--profiling-modes", nargs="+", choices=["off", "host", "device"], default=["off"],
+                        help="SQL device profiling modes; nondefault modes require --batch-study or --manifest")
     parser.add_argument("--study-rows", nargs="+", type=positive_int,
                         help="optional total-row subset for --batch-study")
     parser.add_argument("--backends", nargs="+", default=["datafusion", "cpu", "metal"],
@@ -245,6 +309,10 @@ def main():
         parser.error("--readback-modes must not contain duplicates")
     if any(mode != "scalar" for mode in args.readback_modes) and not args.batch_study:
         parser.error("nondefault --readback-modes require --batch-study")
+    if len(set(args.profiling_modes)) != len(args.profiling_modes):
+        parser.error("--profiling-modes must not contain duplicates")
+    if any(mode != "off" for mode in args.profiling_modes) and not (args.batch_study or args.manifest):
+        parser.error("nondefault --profiling-modes require --batch-study or --manifest")
     if args.study_rows is not None and (not args.batch_study or len(set(args.study_rows)) != len(args.study_rows)):
         parser.error("--study-rows requires --batch-study and unique row counts")
     manifest_bytes = None
@@ -284,6 +352,7 @@ def main():
         "warm_samples": args.warm, "repeats": args.repeats,
         "batch_sizes": args.batch_sizes, "batch_study": args.batch_study,
         "readback_modes": args.readback_modes,
+        "profiling_modes": args.profiling_modes,
         "study_rows": args.study_rows,
         "manifest_description": manifest["description"] if manifest else None,
         "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest() if manifest_bytes is not None else None,
@@ -296,7 +365,7 @@ def main():
     summaries = []
     jobs = []
     if manifest is not None:
-        jobs = manifest_jobs(manifest, args.backends, args.repeats)
+        jobs = manifest_jobs(manifest, args.backends, args.repeats, args.profiling_modes)
         for job in jobs:
             job["manifest"] = True
     else:
@@ -314,26 +383,34 @@ def main():
                             if backend == "datafusion":
                                 jobs.append({"backend": backend, "path": "sql", "case": case,
                                              "batch_size": batch_size, "repeat": repeat,
-                                             "readback_mode": None, "case_id": ""})
+                                             "readback_mode": None, "profiling_mode": None,
+                                             "case_id": ""})
                             else:
                                 mode_offset = (repeat - 1) % len(args.readback_modes)
                                 mode_order = args.readback_modes[mode_offset:] + args.readback_modes[:mode_offset]
+                                profile_offset = (repeat - 1) % len(args.profiling_modes)
+                                profile_order = (args.profiling_modes[profile_offset:]
+                                                 + args.profiling_modes[:profile_offset])
                                 for mode in mode_order:
-                                    jobs.append({"backend": backend, "path": "sql", "case": case,
-                                                 "batch_size": batch_size, "repeat": repeat,
-                                                 "readback_mode": mode, "case_id": ""})
+                                    for profile_mode in profile_order:
+                                        jobs.append({"backend": backend, "path": "sql", "case": case,
+                                                     "batch_size": batch_size, "repeat": repeat,
+                                                     "readback_mode": mode, "profiling_mode": profile_mode,
+                                                     "case_id": ""})
                     continue
                 for batch_size in args.batch_sizes:
                     for backend in backend_order:
                         jobs.append({"backend": backend, "path": "sql", "case": case,
                                      "batch_size": batch_size, "repeat": repeat,
-                                     "readback_mode": None, "case_id": ""})
+                                     "readback_mode": None, "profiling_mode": None,
+                                     "case_id": ""})
                 if dsl_case:
                     for backend in backend_order:
                         if backend != "datafusion":
                             jobs.append({"backend": backend, "path": "dsl", "case": case,
                                          "batch_size": None, "repeat": repeat,
-                                         "readback_mode": None, "case_id": ""})
+                                         "readback_mode": None, "profiling_mode": None,
+                                         "case_id": ""})
 
     for i, job in enumerate(jobs):
         backend, path, case = job["backend"], job["path"], job["case"]
@@ -346,6 +423,9 @@ def main():
             parts.append(f"batch{batch_size}")
         if readback_mode is not None:
             parts.append(readback_mode)
+        profiling_mode = job.get("profiling_mode")
+        if profiling_mode is not None and (profiling_mode != "off" or len(args.profiling_modes) > 1):
+            parts.append(profiling_mode)
         name = "-".join(map(str, parts))
         print(f"[{i+1}/{len(jobs)}] {name}", flush=True)
         completed = subprocess.run(command, capture_output=True, text=True)
@@ -362,7 +442,7 @@ def main():
         first, warm = rows[0], rows[1:]
         summary = {k: first[k] for k in ("backend", "path", "workload", "rows", "pass_percent",
                                         "null_percent", "batches", "partitions", "session_batch_size",
-                                        "aggregate_readback_mode")}
+                                        "aggregate_readback_mode", "profiling_mode")}
         summary["repeat"] = repeat
         summary["case_id"] = job["case_id"]
         summary["warm_samples"] = len(warm)
@@ -380,6 +460,8 @@ def main():
                     "arrow_adapt_ns", "resource_preflight_ns", "upload_submit_ns", "complete_export_ns",
                     "readback_buffers",
                     "peak_device_bytes", "peak_host_bytes", "max_request_device_bytes"):
+            summary["warm_last_" + key] = warm[-1][key]
+        for key in PROFILE_COLUMNS:
             summary["warm_last_" + key] = warm[-1][key]
         for key in ("shared_host_limit_bytes", "shared_device_limit_bytes", "peak_requests"):
             if key in first:
