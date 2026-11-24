@@ -2,7 +2,7 @@
 #[path = "support/sql_acceptance.rs"]
 mod support;
 use cuberel::{
-    ExecutionStats, Executor,
+    AggregateReadbackMode, ExecutionStats, Executor,
     datafusion::{AdapterOptions, CubeAggregateExec, CubeExec, SharedResources, register},
 };
 use datafusion::{
@@ -259,8 +259,8 @@ fn dsl(
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
-    if args.len() != 9 && args.len() != 10 {
-        return Err("usage: sql_acceptance datafusion|cpu|metal sql|dsl project|aggregate|mixed rows pass_percent null_percent batches partitions warm_samples [session_batch_size]".into());
+    if !(9..=11).contains(&args.len()) {
+        return Err("usage: sql_acceptance datafusion|cpu|metal sql|dsl project|aggregate|mixed rows pass_percent null_percent batches partitions warm_samples [session_batch_size [aggregate_readback_mode]]".into());
     }
     let backend = &args[0];
     let path = &args[1];
@@ -275,8 +275,21 @@ async fn main() -> Result<()> {
         .get(9)
         .map(|value| value.parse::<usize>())
         .transpose()?;
+    let requested_readback_mode = args
+        .get(10)
+        .map(|mode| match mode.as_str() {
+            "scalar" => Ok(AggregateReadbackMode::Scalar),
+            "batched" => Ok(AggregateReadbackMode::Batched),
+            _ => Err(format!(
+                "aggregate_readback_mode must be scalar or batched, got {mode}"
+            )),
+        })
+        .transpose()?;
     if requested_batch_size == Some(0) {
         return Err("session_batch_size must be positive".into());
+    }
+    if requested_readback_mode.is_some() && backend == "datafusion" {
+        return Err("aggregate_readback_mode requires a device backend".into());
     }
     if path == "dsl" && requested_batch_size.is_some() {
         return Err("session_batch_size applies only to SQL; omit it for DSL".into());
@@ -296,15 +309,22 @@ async fn main() -> Result<()> {
     let f = Fixture::new(case)?;
     let expected = f.expected(workload)?;
     let start = Instant::now();
-    let e = executor(backend)?;
+    let e = executor(backend)?.map(|executor| match requested_readback_mode {
+        Some(mode) => executor.with_aggregate_readback_mode(mode),
+        None => executor,
+    });
     let init_ms = ms(start);
     let sql = workload.sql(case.pass);
     eprintln!("sql={sql}\ncase={case:?}\nbackend={backend} path={path} init_ms={init_ms:.6}");
     println!(
-        "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,session_batch_size,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes,input_batches,completed_requests,actual_fused_requests,actual_unfused_requests"
+        "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,session_batch_size,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes,input_batches,completed_requests,actual_fused_requests,actual_unfused_requests,arrow_adapt_ns,resource_preflight_ns,upload_submit_ns,complete_export_ns,aggregate_readback_mode,readback_buffers"
     );
     for sample in 0..=samples {
         let before = e.as_ref().map(Executor::stats).unwrap_or_default();
+        let readback_buffers_before = e
+            .as_ref()
+            .map(Executor::readback_buffers)
+            .unwrap_or_default();
         let defs = e.as_ref().map(Executor::define_count).unwrap_or(0);
         let (out, schema, prepare_ms, execute_ms, resources, plan, max_request) = if path == "dsl" {
             let (out, p, x, peak) = dsl(&f, workload, e.as_ref().unwrap())?;
@@ -348,6 +368,9 @@ async fn main() -> Result<()> {
             (out, plan.schema(), p, x, Some(resources), Some(plan), peak)
         };
         let stats = delta(before, e.as_ref().map(Executor::stats).unwrap_or_default());
+        let readback_buffers = e
+            .as_ref()
+            .map(|executor| executor.readback_buffers() - readback_buffers_before);
         let definitions = e.as_ref().map(Executor::define_count).unwrap_or(0) - defs;
         // The snapshot is per sample; output is still owned here and charged.
         let snapshot = resources.as_ref().map(SharedResources::snapshot);
@@ -359,6 +382,13 @@ async fn main() -> Result<()> {
             ] {
                 if metric(plan, name) as u64 != value {
                     return Err(format!("metric mismatch: {name}").into());
+                }
+            }
+            if cube_nodes(plan) > 0 {
+                let observed = optional_metric(plan, "observed_readback_buffers")
+                    .ok_or("missing metric: observed_readback_buffers")?;
+                if observed as u64 != readback_buffers.unwrap_or_default() {
+                    return Err("metric mismatch: observed_readback_buffers".into());
                 }
             }
             if sample == samples {
@@ -405,8 +435,41 @@ async fn main() -> Result<()> {
             })
         });
         let runtime_metrics = runtime_metrics.unwrap_or_default();
+        // These phase timers are DataFusion Cube metrics. Leave them blank for
+        // CPU-baseline and DSL cases, where no Cube plan node reports them.
+        let phase_metrics = plan
+            .as_ref()
+            .filter(|plan| cube_nodes(plan) > 0)
+            .map(|plan| {
+                [
+                    "arrow_adapt",
+                    "resource_preflight",
+                    "upload_submit",
+                    "complete_export",
+                ]
+                .map(|name| {
+                    optional_metric(plan, name)
+                        .map(|value| value.to_string())
+                        .unwrap_or_default()
+                })
+            })
+            .unwrap_or_default();
+        let aggregate_readback_mode = if backend == "datafusion" {
+            String::new()
+        } else {
+            e.as_ref()
+                .map(|executor| match executor.aggregate_readback_mode() {
+                    AggregateReadbackMode::Scalar => "scalar",
+                    AggregateReadbackMode::Batched => "batched",
+                })
+                .unwrap_or_default()
+                .to_string()
+        };
+        let readback_buffers = readback_buffers
+            .map(|value| value.to_string())
+            .unwrap_or_default();
         println!(
-            "{backend},{path},{},{},{},{},{},{},{},{},{sample},{:.6},{prepare_ms:.6},{execute_ms:.6},{:.6},{output_rows},{},{},{},{},{},{},{},{},{definitions},{},{},{},{},{peak_device},{peak_host},{max_request},{},{},{},{}",
+            "{backend},{path},{},{},{},{},{},{},{},{},{sample},{:.6},{prepare_ms:.6},{execute_ms:.6},{:.6},{output_rows},{},{},{},{},{},{},{},{},{definitions},{},{},{},{},{peak_device},{peak_host},{max_request},{},{},{},{},{},{},{},{},{aggregate_readback_mode},{readback_buffers}",
             args[2],
             case.rows,
             case.pass,
@@ -436,7 +499,11 @@ async fn main() -> Result<()> {
             runtime_metrics[0],
             runtime_metrics[1],
             runtime_metrics[2],
-            runtime_metrics[3]
+            runtime_metrics[3],
+            phase_metrics[0],
+            phase_metrics[1],
+            phase_metrics[2],
+            phase_metrics[3]
         );
     }
     Ok(())

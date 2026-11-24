@@ -33,6 +33,8 @@ fn has_global(plan: &Arc<dyn ExecutionPlan>) -> bool {
     plan.is::<CubeAggregateExec>() || plan.children().into_iter().any(has_global)
 }
 async fn exercise(executor: Option<cuberel::Executor>) {
+    let executor =
+        executor.map(|e| e.with_aggregate_readback_mode(cuberel::AggregateReadbackMode::Batched));
     for case in cases() {
         let f = Fixture::new(case).unwrap();
         for w in [Workload::Project, Workload::Aggregate, Workload::Mixed] {

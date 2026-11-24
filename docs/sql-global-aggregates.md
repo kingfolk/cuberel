@@ -101,3 +101,7 @@ linked device runtime. Strict all-feature/all-target Clippy, strict rustdoc,
 no-feature all-target check, formatting and diff checks passed. The two-partition
 example ran on both backends and returned total=70, n=2, valid=2, lo=30, hi=40.
 The known macOS large-unwind-table linker warning did not prevent linking/execution.
+
+The opt-in [batched scalar readback](aggregate-readback.md) mode groups count and
+valid payload reads within each completed batch. It retains the same host global
+merge, total-input proof, checked arguments and EOF-only output contract.

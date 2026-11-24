@@ -27,6 +27,8 @@ fn count(plan: &Arc<dyn ExecutionPlan>, name: &str) -> usize {
         .sum()
 }
 async fn exercise(executor: Option<cuberel::Executor>) {
+    let executor =
+        executor.map(|e| e.with_aggregate_readback_mode(cuberel::AggregateReadbackMode::Batched));
     let workload = Workload::parse("aggregate").unwrap();
     for case in [
         Case {

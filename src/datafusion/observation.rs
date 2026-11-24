@@ -25,6 +25,10 @@ pub(crate) struct Observation {
     pub(crate) queue: Time,
     pub(crate) prepare: Time,
     pub(crate) execute_export: Time,
+    pub(crate) arrow_adapt: Time,
+    pub(crate) resource_preflight: Time,
+    pub(crate) upload_submit: Time,
+    pub(crate) complete_export: Time,
     worker: Time,
     wall: Time,
     active: Gauge,
@@ -64,6 +68,7 @@ impl Observation {
             "observed_upload_calls",
             "observed_upload_bytes",
             "observed_readback_calls",
+            "observed_readback_buffers",
             "observed_readback_bytes",
             "observed_launches",
             "observed_count_reads",
@@ -91,6 +96,11 @@ impl Observation {
             queue: MetricBuilder::new(set).subset_time("queue_wait", partition),
             prepare: MetricBuilder::new(set).subset_time("prepare", partition),
             execute_export: MetricBuilder::new(set).subset_time("execute_export", partition),
+            arrow_adapt: MetricBuilder::new(set).subset_time("arrow_adapt", partition),
+            resource_preflight: MetricBuilder::new(set)
+                .subset_time("resource_preflight", partition),
+            upload_submit: MetricBuilder::new(set).subset_time("upload_submit", partition),
+            complete_export: MetricBuilder::new(set).subset_time("complete_export", partition),
             worker: MetricBuilder::new(set).subset_time("worker", partition),
             wall: MetricBuilder::new(set).subset_time("stream_wall", partition),
             active: MetricBuilder::new(set).gauge("active_streams", partition),
@@ -145,6 +155,7 @@ impl Observation {
             observer: self.clone(),
             executor: executor.clone(),
             stats: executor.stats(),
+            read_buffers: executor.readback_buffers(),
             defines: executor.define_count(),
             start: Instant::now(),
         }
@@ -165,6 +176,7 @@ pub(crate) struct WorkerObservation {
     observer: Arc<Observation>,
     executor: Executor,
     stats: ExecutionStats,
+    read_buffers: u64,
     defines: usize,
     start: Instant,
 }
@@ -208,6 +220,12 @@ impl Drop for WorkerObservation {
         ] {
             self.observer.add(name, new.saturating_sub(old));
         }
+        self.observer.add(
+            "observed_readback_buffers",
+            self.executor
+                .readback_buffers()
+                .saturating_sub(self.read_buffers),
+        );
         self.observer.add(
             "define_calls",
             self.executor.define_count().saturating_sub(self.defines) as u64,

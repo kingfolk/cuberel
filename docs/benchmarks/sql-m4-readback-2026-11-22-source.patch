@@ -1,0 +1,472 @@
+diff --git a/examples/sql_acceptance.rs b/examples/sql_acceptance.rs
+index 7704af9..4184089 100644
+--- a/examples/sql_acceptance.rs
++++ b/examples/sql_acceptance.rs
+@@ -5 +5 @@ use cuberel::{
+-    ExecutionStats, Executor,
++    AggregateReadbackMode, ExecutionStats, Executor,
+@@ -262,2 +262,2 @@ async fn main() -> Result<()> {
+-    if args.len() != 9 && args.len() != 10 {
+-        return Err("usage: sql_acceptance datafusion|cpu|metal sql|dsl project|aggregate|mixed rows pass_percent null_percent batches partitions warm_samples [session_batch_size]".into());
++    if !(9..=11).contains(&args.len()) {
++        return Err("usage: sql_acceptance datafusion|cpu|metal sql|dsl project|aggregate|mixed rows pass_percent null_percent batches partitions warm_samples [session_batch_size [aggregate_readback_mode]]".into());
+@@ -277,0 +278,10 @@ async fn main() -> Result<()> {
++    let requested_readback_mode = args
++        .get(10)
++        .map(|mode| match mode.as_str() {
++            "scalar" => Ok(AggregateReadbackMode::Scalar),
++            "batched" => Ok(AggregateReadbackMode::Batched),
++            _ => Err(format!(
++                "aggregate_readback_mode must be scalar or batched, got {mode}"
++            )),
++        })
++        .transpose()?;
+@@ -280,0 +291,3 @@ async fn main() -> Result<()> {
++    if requested_readback_mode.is_some() && backend == "datafusion" {
++        return Err("aggregate_readback_mode requires a device backend".into());
++    }
+@@ -299 +312,4 @@ async fn main() -> Result<()> {
+-    let e = executor(backend)?;
++    let e = executor(backend)?.map(|executor| match requested_readback_mode {
++        Some(mode) => executor.with_aggregate_readback_mode(mode),
++        None => executor,
++    });
+@@ -304 +320 @@ async fn main() -> Result<()> {
+-        "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,session_batch_size,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes,input_batches,completed_requests,actual_fused_requests,actual_unfused_requests,arrow_adapt_ns,resource_preflight_ns,upload_submit_ns,complete_export_ns"
++        "backend,path,workload,rows,pass_percent,null_percent,batches,partitions,session_batch_size,phase,sample,init_ms,prepare_ms,execute_ms,total_ms,output_rows,upload_calls,upload_bytes,readback_calls,readback_bytes,launches,count_reads,allocation_calls,allocation_bytes,define_calls,queue_wait_ns,adapter_prepare_ns,execute_export_ns,worker_ns,peak_device_bytes,peak_host_bytes,max_request_device_bytes,input_batches,completed_requests,actual_fused_requests,actual_unfused_requests,arrow_adapt_ns,resource_preflight_ns,upload_submit_ns,complete_export_ns,aggregate_readback_mode,readback_buffers"
+@@ -307,0 +324,4 @@ async fn main() -> Result<()> {
++        let readback_buffers_before = e
++            .as_ref()
++            .map(Executor::readback_buffers)
++            .unwrap_or_default();
+@@ -350,0 +371,3 @@ async fn main() -> Result<()> {
++        let readback_buffers = e
++            .as_ref()
++            .map(|executor| executor.readback_buffers() - readback_buffers_before);
+@@ -363,0 +387,7 @@ async fn main() -> Result<()> {
++            if cube_nodes(plan) > 0 {
++                let observed = optional_metric(plan, "observed_readback_buffers")
++                    .ok_or("missing metric: observed_readback_buffers")?;
++                if observed as u64 != readback_buffers.unwrap_or_default() {
++                    return Err("metric mismatch: observed_readback_buffers".into());
++                }
++            }
+@@ -426,0 +457,14 @@ async fn main() -> Result<()> {
++        let aggregate_readback_mode = if backend == "datafusion" {
++            String::new()
++        } else {
++            e.as_ref()
++                .map(|executor| match executor.aggregate_readback_mode() {
++                    AggregateReadbackMode::Scalar => "scalar",
++                    AggregateReadbackMode::Batched => "batched",
++                })
++                .unwrap_or_default()
++                .to_string()
++        };
++        let readback_buffers = readback_buffers
++            .map(|value| value.to_string())
++            .unwrap_or_default();
+@@ -428 +472 @@ async fn main() -> Result<()> {
+-            "{backend},{path},{},{},{},{},{},{},{},{},{sample},{:.6},{prepare_ms:.6},{execute_ms:.6},{:.6},{output_rows},{},{},{},{},{},{},{},{},{definitions},{},{},{},{},{peak_device},{peak_host},{max_request},{},{},{},{},{},{},{},{}",
++            "{backend},{path},{},{},{},{},{},{},{},{},{sample},{:.6},{prepare_ms:.6},{execute_ms:.6},{:.6},{output_rows},{},{},{},{},{},{},{},{},{definitions},{},{},{},{},{peak_device},{peak_host},{max_request},{},{},{},{},{},{},{},{},{aggregate_readback_mode},{readback_buffers}",
+diff --git a/scripts/sql_acceptance.py b/scripts/sql_acceptance.py
+index 8eb8c78..c0796cf 100644
+--- a/scripts/sql_acceptance.py
++++ b/scripts/sql_acceptance.py
+@@ -74,0 +75,2 @@ def main():
++    parser.add_argument("--readback-modes", nargs="+", choices=["scalar", "batched"], default=["scalar"],
++                        help="aggregate readback modes; nondefault modes require --batch-study")
+@@ -84,0 +87,4 @@ def main():
++    if len(set(args.readback_modes)) != len(args.readback_modes):
++        parser.error("--readback-modes must not contain duplicates")
++    if any(mode != "scalar" for mode in args.readback_modes) and not args.batch_study:
++        parser.error("nondefault --readback-modes require --batch-study")
+@@ -100,0 +107,2 @@ def main():
++        "library_sha256": {str(name): hashlib.sha256(name.read_bytes()).hexdigest()
++                           for name in sorted(Path("src").rglob("*.rs"))},
+@@ -106,0 +115 @@ def main():
++        "readback_modes": args.readback_modes,
+@@ -127 +136,7 @@ def main():
+-                        jobs.append((backend, "sql", case, batch_size, repeat))
++                        if backend == "datafusion":
++                            jobs.append((backend, "sql", case, batch_size, repeat, None))
++                        else:
++                            mode_offset = (repeat - 1) % len(args.readback_modes)
++                            mode_order = args.readback_modes[mode_offset:] + args.readback_modes[:mode_offset]
++                            for mode in mode_order:
++                                jobs.append((backend, "sql", case, batch_size, repeat, mode))
+@@ -131 +146 @@ def main():
+-                    jobs.append((backend, "sql", case, batch_size, repeat))
++                    jobs.append((backend, "sql", case, batch_size, repeat, None))
+@@ -137 +152 @@ def main():
+-                        jobs.append((backend, "dsl", case, None, repeat))
++                        jobs.append((backend, "dsl", case, None, repeat, None))
+@@ -139 +154 @@ def main():
+-    for i, (backend, path, case, batch_size, repeat) in enumerate(jobs):
++    for i, (backend, path, case, batch_size, repeat, readback_mode) in enumerate(jobs):
+@@ -142,0 +158,2 @@ def main():
++        if readback_mode is not None:
++            command.append(readback_mode)
+@@ -145,0 +163,2 @@ def main():
++        if readback_mode is not None:
++            parts.append(readback_mode)
+@@ -156,0 +176,3 @@ def main():
++        actual_modes = {row["aggregate_readback_mode"] for row in rows}
++        if len(actual_modes) != 1 or (readback_mode is not None and actual_modes != {readback_mode}):
++            raise RuntimeError(f"unexpected aggregate readback mode: {name}: {actual_modes}")
+@@ -161 +183,2 @@ def main():
+-                                        "null_percent", "batches", "partitions", "session_batch_size")}
++                                        "null_percent", "batches", "partitions", "session_batch_size",
++                                        "aggregate_readback_mode")}
+@@ -175,0 +199 @@ def main():
++                    "readback_buffers",
+diff --git a/src/aggregate.rs b/src/aggregate.rs
+index 92ec425..fc3fe09 100644
+--- a/src/aggregate.rs
++++ b/src/aggregate.rs
+@@ -16,0 +17,10 @@ use std::{
++/// Host scalar read scheduling. This does not change kernels, reduction trees,
++/// validity/overflow checks, or input residency. Scalar remains the default.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub enum AggregateReadbackMode {
++    #[default]
++    Scalar,
++    /// Read all counts together, validate them, then read only valid payloads.
++    Batched,
++}
++
+@@ -102,0 +113 @@ pub struct DeviceAggregates {
++    readback_mode: AggregateReadbackMode,
+@@ -169,0 +181,6 @@ impl DeviceAggregates {
++        match self.readback_mode {
++            AggregateReadbackMode::Scalar => self.read_results_scalar(rows),
++            AggregateReadbackMode::Batched => self.read_results_batched(rows),
++        }
++    }
++    fn read_results_scalar(&self, rows: u32) -> Result<Vec<AggregateResult>, ExecutionError> {
+@@ -222,0 +240,76 @@ impl DeviceAggregates {
++    fn read_results_batched(&self, rows: u32) -> Result<Vec<AggregateResult>, ExecutionError> {
++        let handles = self
++            .entries
++            .iter()
++            .filter(|e| e.kind.is_some())
++            .filter_map(|e| e.state.as_ref().map(|s| s.count.clone()))
++            .collect();
++        let mut words = self.counters.read_words(&self.client, handles)?.into_iter();
++        let mut counts = Vec::with_capacity(self.entries.len());
++        for entry in self.entries.iter() {
++            let count = if entry.kind.is_some() && entry.state.is_some() {
++                words.next().expect("validated count plane shape")
++            } else {
++                0
++            };
++            if count > rows {
++                return Err(ExecutionError::InvalidAggregateCount { count, rows });
++            }
++            counts.push(count);
++        }
++        let mut handles = Vec::new();
++        for (entry, &count) in self.entries.iter().zip(&counts) {
++            if count != 0
++                && let Some(kind) = entry.kind
++                && kind != ReductionKind::Count
++            {
++                let state = entry.state.as_ref().expect("nonempty state");
++                handles.push(state.low.clone());
++                if kind.needs_high() {
++                    handles.push(state.high.clone().expect("wide state"));
++                }
++            }
++        }
++        let mut values = self.counters.read_words(&self.client, handles)?.into_iter();
++        Ok(self
++            .entries
++            .iter()
++            .zip(counts)
++            .map(|(entry, count)| {
++                let value = match entry.kind {
++                    None => AggregateValue::Count(u64::from(rows)),
++                    Some(kind) => {
++                        let bits = if count != 0 && kind != ReductionKind::Count {
++                            values.next().expect("validated value plane shape")
++                        } else {
++                            0
++                        };
++                        let high = if count != 0 && kind.needs_high() {
++                            values.next().expect("validated high plane shape")
++                        } else {
++                            0
++                        };
++                        match kind {
++                            ReductionKind::Count => AggregateValue::Count(u64::from(count)),
++                            ReductionKind::MinI32 | ReductionKind::MaxI32 => {
++                                AggregateValue::I32((count != 0).then_some(bits as i32))
++                            }
++                            ReductionKind::SumI64 => AggregateValue::I64(
++                                (count != 0)
++                                    .then_some(((u64::from(high) << 32) | u64::from(bits)) as i64),
++                            ),
++                            ReductionKind::MinF32
++                            | ReductionKind::MaxF32
++                            | ReductionKind::SumF32 => {
++                                AggregateValue::F32((count != 0).then_some(f32::from_bits(bits)))
++                            }
++                        }
++                    }
++                };
++                AggregateResult {
++                    name: entry.name.clone(),
++                    value,
++                }
++            })
++            .collect())
++    }
+@@ -229,0 +323,10 @@ impl Executor {
++    /// Select host aggregate read scheduling for subsequently submitted results.
++    /// Existing pending results and kernel identities are unchanged.
++    pub fn with_aggregate_readback_mode(mut self, mode: AggregateReadbackMode) -> Self {
++        self.aggregate_readback = mode;
++        self
++    }
++    pub fn aggregate_readback_mode(&self) -> AggregateReadbackMode {
++        self.aggregate_readback
++    }
++
+@@ -421,0 +525 @@ impl Executor {
++            readback_mode: self.aggregate_readback,
+@@ -515 +619 @@ mod tests {
+-    fn completion(device: Device) {
++    fn completion(device: Device, mode: crate::AggregateReadbackMode) {
+@@ -517 +621,3 @@ mod tests {
+-        let e = Executor::new(client.clone()).unwrap();
++        let e = Executor::new(client.clone())
++            .unwrap()
++            .with_aggregate_readback_mode(mode);
+@@ -566,0 +673,23 @@ mod tests {
++        if mode == crate::AggregateReadbackMode::Batched {
++            let before = e.stats();
++            let buffers = e.readback_buffers();
++            assert!(
++                e.counters
++                    .read_words(&client, Vec::new())
++                    .unwrap()
++                    .is_empty()
++            );
++            assert_eq!(e.stats(), before);
++            let malformed = client.create_from_slice(&[0_u8; 8]);
++            assert!(matches!(
++                e.counters.read_words(&client, vec![malformed]),
++                Err(ExecutionError::OutputLength {
++                    expected: 4,
++                    actual: 8
++                })
++            ));
++            assert_eq!(e.readback_buffers(), buffers + 1);
++            assert_eq!(e.stats().readback_bytes, before.readback_bytes);
++            let valid = client.create_from_slice(&42_u32.to_ne_bytes());
++            assert_eq!(e.counters.read_words(&client, vec![valid]).unwrap(), [42]);
++        }
+@@ -571 +700,6 @@ mod tests {
+-        completion(Device::cpu().expect("CPU required"));
++        for mode in [
++            crate::AggregateReadbackMode::Scalar,
++            crate::AggregateReadbackMode::Batched,
++        ] {
++            completion(Device::cpu().expect("CPU required"), mode);
++        }
+@@ -576 +710,9 @@ mod tests {
+-        completion(Device::metal(Default::default()).expect("Metal required"));
++        for mode in [
++            crate::AggregateReadbackMode::Scalar,
++            crate::AggregateReadbackMode::Batched,
++        ] {
++            completion(
++                Device::metal(Default::default()).expect("Metal required"),
++                mode,
++            );
++        }
+@@ -590 +732 @@ mod sum_completion_tests {
+-    fn exercise(device: Device) {
++    fn exercise(device: Device, mode: crate::AggregateReadbackMode) {
+@@ -592 +734,3 @@ mod sum_completion_tests {
+-        let e = Executor::new(client.clone()).unwrap();
++        let e = Executor::new(client.clone())
++            .unwrap()
++            .with_aggregate_readback_mode(mode);
+@@ -642 +786,6 @@ mod sum_completion_tests {
+-        exercise(Device::cpu().expect("CPU required"));
++        for mode in [
++            crate::AggregateReadbackMode::Scalar,
++            crate::AggregateReadbackMode::Batched,
++        ] {
++            exercise(Device::cpu().expect("CPU required"), mode);
++        }
+@@ -647 +796,9 @@ mod sum_completion_tests {
+-        exercise(Device::metal(Default::default()).expect("Metal required"));
++        for mode in [
++            crate::AggregateReadbackMode::Scalar,
++            crate::AggregateReadbackMode::Batched,
++        ] {
++            exercise(
++                Device::metal(Default::default()).expect("Metal required"),
++                mode,
++            );
++        }
+diff --git a/src/aggregate/fused.rs b/src/aggregate/fused.rs
+index a750046..4f40010 100644
+--- a/src/aggregate/fused.rs
++++ b/src/aggregate/fused.rs
+@@ -334,0 +335 @@ impl FusedPlan {
++            readback_mode: executor.aggregate_readback,
+@@ -602,2 +603,4 @@ mod tests {
+-    fn check(device: Device) {
+-        let e = Executor::new(device.client()).unwrap();
++    fn check(device: Device, mode: crate::AggregateReadbackMode) {
++        let e = Executor::new(device.client())
++            .unwrap()
++            .with_aggregate_readback_mode(mode);
+@@ -666 +669,6 @@ mod tests {
+-        check(Device::cpu().unwrap());
++        for mode in [
++            crate::AggregateReadbackMode::Scalar,
++            crate::AggregateReadbackMode::Batched,
++        ] {
++            check(Device::cpu().unwrap(), mode);
++        }
+@@ -671 +679,6 @@ mod tests {
+-        check(Device::metal(Default::default()).unwrap());
++        for mode in [
++            crate::AggregateReadbackMode::Scalar,
++            crate::AggregateReadbackMode::Batched,
++        ] {
++            check(Device::metal(Default::default()).unwrap(), mode);
++        }
+diff --git a/src/datafusion/diagnostics.rs b/src/datafusion/diagnostics.rs
+index 7abf780..4080f50 100644
+--- a/src/datafusion/diagnostics.rs
++++ b/src/datafusion/diagnostics.rs
+@@ -52,0 +53 @@ pub struct PlacementReport {
++    pub aggregate_readback_mode: Option<crate::AggregateReadbackMode>,
+@@ -63 +64 @@ impl fmt::Display for PlacementReport {
+-            "placement={:?}, device={:?}, semantic_profile={}, per_request_budget={:?}, shared_limits={:?}, batch_policy={:?}",
++            "placement={:?}, device={:?}, semantic_profile={}, per_request_budget={:?}, shared_limits={:?}, batch_policy={:?}, aggregate_readback={:?}",
+@@ -69 +70,2 @@ impl fmt::Display for PlacementReport {
+-            self.batch_policy
++            self.batch_policy,
++            self.aggregate_readback_mode
+@@ -100,0 +103,4 @@ pub fn placement_report(
++        aggregate_readback_mode: options
++            .engine
++            .as_ref()
++            .map(|e| e.executor.aggregate_readback_mode()),
+diff --git a/src/datafusion/exec.rs b/src/datafusion/exec.rs
+index e775e42..b75df82 100644
+--- a/src/datafusion/exec.rs
++++ b/src/datafusion/exec.rs
+@@ -210 +210 @@ impl DisplayAs for CubeExec {
+-            "CubeExec: filter={}, filters={}, outputs={}, nodes={}, boundary=[{}], semantic_profile=df55-i32-v1, max_in_flight=1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}, batch_policy={:?}",
++            "CubeExec: filter={}, filters={}, outputs={}, nodes={}, boundary=[{}], semantic_profile=df55-i32-v1, max_in_flight=1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}, batch_policy={:?}, aggregate_readback={:?}",
+@@ -219 +219,2 @@ impl DisplayAs for CubeExec {
+-            self.engine.batch_policy
++            self.engine.batch_policy,
++            self.engine.executor.aggregate_readback_mode()
+diff --git a/src/datafusion/global.rs b/src/datafusion/global.rs
+index c8b7f56..ebce1f1 100644
+--- a/src/datafusion/global.rs
++++ b/src/datafusion/global.rs
+@@ -557 +557 @@ impl DisplayAs for CubeAggregateExec {
+-            "CubeAggregateExec: global=true, aggregates={}, filters={}, input_upper_bound={}, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}, batch_policy={:?}",
++            "CubeAggregateExec: global=true, aggregates={}, filters={}, input_upper_bound={}, merge=host_scalar, partitions=1, semantic_profile=df55-i32-v1, fragment_id={}, device={}, per_batch_estimate=runtime, shared_limits={:?}, batch_policy={:?}, aggregate_readback={:?}",
+@@ -564 +564,2 @@ impl DisplayAs for CubeAggregateExec {
+-            self.engine.batch_policy
++            self.engine.batch_policy,
++            self.engine.executor.aggregate_readback_mode()
+diff --git a/src/datafusion/observation.rs b/src/datafusion/observation.rs
+index dca6846..56a75c3 100644
+--- a/src/datafusion/observation.rs
++++ b/src/datafusion/observation.rs
+@@ -70,0 +71 @@ impl Observation {
++            "observed_readback_buffers",
+@@ -156,0 +158 @@ impl Observation {
++            read_buffers: executor.readback_buffers(),
+@@ -176,0 +179 @@ pub(crate) struct WorkerObservation {
++    read_buffers: u64,
+@@ -219,0 +223,6 @@ impl Drop for WorkerObservation {
++        self.observer.add(
++            "observed_readback_buffers",
++            self.executor
++                .readback_buffers()
++                .saturating_sub(self.read_buffers),
++        );
+diff --git a/src/executor.rs b/src/executor.rs
+index 47bb79e..70353eb 100644
+--- a/src/executor.rs
++++ b/src/executor.rs
+@@ -35,0 +36 @@ pub struct Executor {
++    pub(crate) aggregate_readback: crate::AggregateReadbackMode,
+@@ -62,0 +64 @@ impl Executor {
++            aggregate_readback: crate::AggregateReadbackMode::Scalar,
+diff --git a/src/lib.rs b/src/lib.rs
+index 9dee4d6..8421ae2 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -66 +66,4 @@ mod selection_kernel;
+-pub use aggregate::{Aggregate, AggregateResult, AggregateStats, AggregateValue, DeviceAggregates};
++pub use aggregate::{
++    Aggregate, AggregateReadbackMode, AggregateResult, AggregateStats, AggregateValue,
++    DeviceAggregates,
++};
+diff --git a/src/resident.rs b/src/resident.rs
+index 5950632..4af6579 100644
+--- a/src/resident.rs
++++ b/src/resident.rs
+@@ -41,0 +42 @@ pub(crate) struct ExecutionCounters {
++    read_buffers: AtomicU64,
+@@ -55,0 +57 @@ impl ExecutionCounters {
++        self.read_buffers.fetch_add(1, Ordering::Relaxed);
+@@ -60,0 +63,35 @@ impl ExecutionCounters {
++    /// Read immutable U32 scalar planes together. Count one runtime API call,
++    /// but expose every requested buffer separately from the call count.
++    pub(crate) fn read_words(
++        &self,
++        client: &Client,
++        handles: Vec<Handle>,
++    ) -> Result<Vec<u32>, ExecutionError> {
++        if handles.is_empty() {
++            return Ok(Vec::new());
++        }
++        let expected = handles.len();
++        self.reads.fetch_add(1, Ordering::Relaxed);
++        self.read_buffers
++            .fetch_add(expected as u64, Ordering::Relaxed);
++        let data = client.read(handles).map_err(ExecutionError::Backend)?;
++        if data.len() != expected {
++            return Err(ExecutionError::InvalidAggregation {
++                reason: "unexpected scalar readback plane count",
++            });
++        }
++        let words = data
++            .iter()
++            .map(|bytes| {
++                let raw: &[u8] = bytes;
++                let word: [u8; 4] = raw.try_into().map_err(|_| ExecutionError::OutputLength {
++                    expected: 4,
++                    actual: bytes.len(),
++                })?;
++                Ok(u32::from_ne_bytes(word))
++            })
++            .collect::<Result<Vec<_>, ExecutionError>>()?;
++        self.read_bytes
++            .fetch_add((words.len() as u64) * 4, Ordering::Relaxed);
++        Ok(words)
++    }
+@@ -497,0 +535,9 @@ mod tests {
++
++impl Executor {
++    /// Cumulative buffer descriptors requested by explicit read APIs, including
++    /// failed requests. A batched API call can request multiple buffers. Excludes
++    /// implicit backend transfers; shared with executor clones, like stats().
++    pub fn readback_buffers(&self) -> u64 {
++        self.counters.read_buffers.load(Ordering::Relaxed)
++    }
++}

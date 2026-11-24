@@ -121,3 +121,30 @@ warning remains nonfatal.
 The [explicit batch policy](sql-batch-policy.md) is shown in the placement report
 and Cube EXPLAIN nodes. `max_input_batch_rows` records a per-partition actual
 maximum; the configured source target is not a prediction of every request size.
+
+## Nested host-wall phase scopes
+
+Filter/project and global-aggregate workers now expose four disjoint child scopes:
+
+| Metric | Boundary |
+|---|---|
+| `arrow_adapt` | Referenced-column mapping, Arrow/schema adaptation, dense validity expansion and host Batch view |
+| `resource_preflight` | Pipeline estimate, budget and shared device-byte reservation |
+| `upload_submit` | Existing host-pipeline API: repeated validated preparation, encoding/upload, allocations, IR/compilation where observable, and submissions |
+| `complete_export` | Completion/error checks, scalar or column readbacks, decoding/Arrow packing and projection output reservation |
+
+The first pair is nested under `prepare`; the second under `execute_export`. All
+are inside `worker`. They are host wall intervals, not GPU/kernel/driver timers.
+Submission may execute or compile inline; completion can include outstanding GPU
+work. Global host scalar merging and final SQL-row construction occur outside the
+worker. Sibling scopes do not cover every scheduler/metadata cost. Times from
+parallel partitions still overlap, and medians cannot be added to reconstruct a
+query. Use the independent end-to-end timer for performance claims.
+
+Failures count time in the phase actually entered; unentered registered phases
+remain zero. CPU-only DataFusion and direct DSL have no Cube phase observations;
+the acceptance CSV marks those fields unavailable rather than inventing times.
+
+`observed_readback_buffers` counts attempted explicit buffer descriptors, distinct
+from read API calls and validated bytes. The configured aggregate readback mode
+is visible in placement/EXPLAIN; see [mode semantics and limits](aggregate-readback.md).

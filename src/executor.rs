@@ -33,6 +33,7 @@ pub struct Executor {
     pub(crate) client: Client,
     cube_size: u32,
     pub(crate) budget: crate::ResourceBudget,
+    pub(crate) aggregate_readback: crate::AggregateReadbackMode,
     pub(crate) counters: Arc<ExecutionCounters>,
     pub(crate) define_count: Arc<AtomicUsize>,
 }
@@ -60,6 +61,7 @@ impl Executor {
             client,
             cube_size,
             budget: crate::ResourceBudget::UNLIMITED,
+            aggregate_readback: crate::AggregateReadbackMode::Scalar,
             counters: Arc::new(ExecutionCounters::default()),
             define_count: Arc::new(AtomicUsize::new(0)),
         })

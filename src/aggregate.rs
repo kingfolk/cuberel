@@ -14,6 +14,16 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 
+/// Host scalar read scheduling. This does not change kernels, reduction trees,
+/// validity/overflow checks, or input residency. Scalar remains the default.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AggregateReadbackMode {
+    #[default]
+    Scalar,
+    /// Read all counts together, validate them, then read only valid payloads.
+    Batched,
+}
+
 /// Owned aggregate specification. MIN/MAX accept F32/I32; COUNT accepts every
 /// current expression result type. SUM widens I32 to I64; F32 stays F32.
 #[derive(Clone, Debug)]
@@ -100,6 +110,7 @@ pub struct DeviceAggregates {
     dependencies: Arc<Vec<Dependency>>,
     retained: Arc<Vec<Handle>>,
     stats: AggregateStats,
+    readback_mode: AggregateReadbackMode,
     predicate_checks: Arc<Vec<SubmittedExpression>>,
     row_count_state: Option<Handle>,
 }
@@ -167,6 +178,12 @@ impl DeviceAggregates {
         self.read_results(self.complete()?)
     }
     pub(crate) fn read_results(&self, rows: u32) -> Result<Vec<AggregateResult>, ExecutionError> {
+        match self.readback_mode {
+            AggregateReadbackMode::Scalar => self.read_results_scalar(rows),
+            AggregateReadbackMode::Batched => self.read_results_batched(rows),
+        }
+    }
+    fn read_results_scalar(&self, rows: u32) -> Result<Vec<AggregateResult>, ExecutionError> {
         self.entries
             .iter()
             .map(|entry| {
@@ -220,6 +237,82 @@ impl DeviceAggregates {
             })
             .collect()
     }
+    fn read_results_batched(&self, rows: u32) -> Result<Vec<AggregateResult>, ExecutionError> {
+        let handles = self
+            .entries
+            .iter()
+            .filter(|e| e.kind.is_some())
+            .filter_map(|e| e.state.as_ref().map(|s| s.count.clone()))
+            .collect();
+        let mut words = self.counters.read_words(&self.client, handles)?.into_iter();
+        let mut counts = Vec::with_capacity(self.entries.len());
+        for entry in self.entries.iter() {
+            let count = if entry.kind.is_some() && entry.state.is_some() {
+                words.next().expect("validated count plane shape")
+            } else {
+                0
+            };
+            if count > rows {
+                return Err(ExecutionError::InvalidAggregateCount { count, rows });
+            }
+            counts.push(count);
+        }
+        let mut handles = Vec::new();
+        for (entry, &count) in self.entries.iter().zip(&counts) {
+            if count != 0
+                && let Some(kind) = entry.kind
+                && kind != ReductionKind::Count
+            {
+                let state = entry.state.as_ref().expect("nonempty state");
+                handles.push(state.low.clone());
+                if kind.needs_high() {
+                    handles.push(state.high.clone().expect("wide state"));
+                }
+            }
+        }
+        let mut values = self.counters.read_words(&self.client, handles)?.into_iter();
+        Ok(self
+            .entries
+            .iter()
+            .zip(counts)
+            .map(|(entry, count)| {
+                let value = match entry.kind {
+                    None => AggregateValue::Count(u64::from(rows)),
+                    Some(kind) => {
+                        let bits = if count != 0 && kind != ReductionKind::Count {
+                            values.next().expect("validated value plane shape")
+                        } else {
+                            0
+                        };
+                        let high = if count != 0 && kind.needs_high() {
+                            values.next().expect("validated high plane shape")
+                        } else {
+                            0
+                        };
+                        match kind {
+                            ReductionKind::Count => AggregateValue::Count(u64::from(count)),
+                            ReductionKind::MinI32 | ReductionKind::MaxI32 => {
+                                AggregateValue::I32((count != 0).then_some(bits as i32))
+                            }
+                            ReductionKind::SumI64 => AggregateValue::I64(
+                                (count != 0)
+                                    .then_some(((u64::from(high) << 32) | u64::from(bits)) as i64),
+                            ),
+                            ReductionKind::MinF32
+                            | ReductionKind::MaxF32
+                            | ReductionKind::SumF32 => {
+                                AggregateValue::F32((count != 0).then_some(f32::from_bits(bits)))
+                            }
+                        }
+                    }
+                };
+                AggregateResult {
+                    name: entry.name.clone(),
+                    value,
+                }
+            })
+            .collect())
+    }
     fn read_word(&self, handle: &Handle) -> Result<u32, ExecutionError> {
         let bytes = self.counters.read(&self.client, handle.clone(), 4)?;
         Ok(u32::from_ne_bytes(bytes.as_chunks::<4>().0[0]))
@@ -227,6 +320,16 @@ impl DeviceAggregates {
 }
 
 impl Executor {
+    /// Select host aggregate read scheduling for subsequently submitted results.
+    /// Existing pending results and kernel identities are unchanged.
+    pub fn with_aggregate_readback_mode(mut self, mode: AggregateReadbackMode) -> Self {
+        self.aggregate_readback = mode;
+        self
+    }
+    pub fn aggregate_readback_mode(&self) -> AggregateReadbackMode {
+        self.aggregate_readback
+    }
+
     /// Submit named global aggregates over every logical row of a resident batch.
     pub fn aggregate_resident(
         &self,
@@ -419,6 +522,7 @@ impl Executor {
             dependencies: Arc::new(dependencies),
             retained: Arc::new(retained),
             stats: plan.stats,
+            readback_mode: self.aggregate_readback,
             predicate_checks: Arc::new(Vec::new()),
             row_count_state: None,
         })
@@ -512,9 +616,11 @@ mod tests {
     };
     use cubecl::Device;
     use std::sync::Arc;
-    fn completion(device: Device) {
+    fn completion(device: Device, mode: crate::AggregateReadbackMode) {
         let client = device.client();
-        let e = Executor::new(client.clone()).unwrap();
+        let e = Executor::new(client.clone())
+            .unwrap()
+            .with_aggregate_readback_mode(mode);
         let schema = Schema::new(&[("x", DataType::I32)], &[]).unwrap();
         let x = prepare(&col("x"), &schema).unwrap();
         let requests = [
@@ -564,16 +670,52 @@ mod tests {
                 .value,
             AggregateValue::Count(3)
         );
+        if mode == crate::AggregateReadbackMode::Batched {
+            let before = e.stats();
+            let buffers = e.readback_buffers();
+            assert!(
+                e.counters
+                    .read_words(&client, Vec::new())
+                    .unwrap()
+                    .is_empty()
+            );
+            assert_eq!(e.stats(), before);
+            let malformed = client.create_from_slice(&[0_u8; 8]);
+            assert!(matches!(
+                e.counters.read_words(&client, vec![malformed]),
+                Err(ExecutionError::OutputLength {
+                    expected: 4,
+                    actual: 8
+                })
+            ));
+            assert_eq!(e.readback_buffers(), buffers + 1);
+            assert_eq!(e.stats().readback_bytes, before.readback_bytes);
+            let valid = client.create_from_slice(&42_u32.to_ne_bytes());
+            assert_eq!(e.counters.read_words(&client, vec![valid]).unwrap(), [42]);
+        }
     }
     #[cfg(feature = "cpu")]
     #[test]
     fn cpu_aggregate_completion_checks_all_resources() {
-        completion(Device::cpu().expect("CPU required"));
+        for mode in [
+            crate::AggregateReadbackMode::Scalar,
+            crate::AggregateReadbackMode::Batched,
+        ] {
+            completion(Device::cpu().expect("CPU required"), mode);
+        }
     }
     #[cfg(all(feature = "metal", target_vendor = "apple"))]
     #[test]
     fn metal_aggregate_completion_checks_all_resources() {
-        completion(Device::metal(Default::default()).expect("Metal required"));
+        for mode in [
+            crate::AggregateReadbackMode::Scalar,
+            crate::AggregateReadbackMode::Batched,
+        ] {
+            completion(
+                Device::metal(Default::default()).expect("Metal required"),
+                mode,
+            );
+        }
     }
 }
 
@@ -587,9 +729,11 @@ mod sum_completion_tests {
         Parameters, Schema, col, prepare,
     };
     use cubecl::Device;
-    fn exercise(device: Device) {
+    fn exercise(device: Device, mode: crate::AggregateReadbackMode) {
         let client = device.client();
-        let e = Executor::new(client.clone()).unwrap();
+        let e = Executor::new(client.clone())
+            .unwrap()
+            .with_aggregate_readback_mode(mode);
         let schema = Schema::new(&[("x", DataType::I32)], &[]).unwrap();
         let x = prepare(&col("x"), &schema).unwrap();
         let req = [("sum", Aggregate::Sum(x))];
@@ -639,12 +783,25 @@ mod sum_completion_tests {
     #[cfg(feature = "cpu")]
     #[test]
     fn cpu_sum_high_word_failure_is_observed() {
-        exercise(Device::cpu().expect("CPU required"));
+        for mode in [
+            crate::AggregateReadbackMode::Scalar,
+            crate::AggregateReadbackMode::Batched,
+        ] {
+            exercise(Device::cpu().expect("CPU required"), mode);
+        }
     }
     #[cfg(all(feature = "metal", target_vendor = "apple"))]
     #[test]
     fn metal_sum_high_word_failure_is_observed() {
-        exercise(Device::metal(Default::default()).expect("Metal required"));
+        for mode in [
+            crate::AggregateReadbackMode::Scalar,
+            crate::AggregateReadbackMode::Batched,
+        ] {
+            exercise(
+                Device::metal(Default::default()).expect("Metal required"),
+                mode,
+            );
+        }
     }
 }
 

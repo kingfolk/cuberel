@@ -63,7 +63,10 @@ mod selected;
 mod selection;
 mod selection_kernel;
 
-pub use aggregate::{Aggregate, AggregateResult, AggregateStats, AggregateValue, DeviceAggregates};
+pub use aggregate::{
+    Aggregate, AggregateReadbackMode, AggregateResult, AggregateStats, AggregateValue,
+    DeviceAggregates,
+};
 pub use budget::{BudgetError, BudgetResource, ResourceBudget, ResourceEstimate};
 pub use emitter::{CODEGEN_VERSION, ExpressionIdentity};
 pub use error::{Error, InputKind};
