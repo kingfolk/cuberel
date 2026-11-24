@@ -152,3 +152,6 @@ The output should rank the observed host components and device span with their
 coverage/overlap limits, select a bounded next investigation, and state the
 remaining unknowns. It must not claim an optimization's speedup from attribution
 alone or require a speculative new kernel/backend dependency.
+
+The [first attribution/overhead report](benchmarks/sql-profile-attribution.md)
+archives the three-mode results, projection follow-up and remaining unknowns.

@@ -350,3 +350,5 @@ validates upload and execution atomically. See [resource accounting and limits](
 and [the reproducible M2 acceptance report](docs/benchmarks/milestone-03-acceptance.md).
 
 The [detailed SQL profiler](docs/sql-detailed-profiling.md) separates host encoding, runtime calls and explicit device-window diagnostics.
+
+See the [profiling attribution and overhead report](docs/benchmarks/sql-profile-attribution.md) for measured host components, device spans and limitations.
