@@ -155,3 +155,13 @@ gather and cross-query residency remain outside this adapter's support. Failure
 or rejection never authorizes silently retrying a device query on CPU. Future
 operator work should start from a measured workload, not from a kernel-only
 speedup or this fixture alone.
+
+## M4 workload profiles
+
+For explicit SQL sizes, readback modes, memory caps and a saved case list, use
+the [profile workflow](sql-acceptance-profiles.md). The legacy defaults and DSL
+diagnostic retain their original contract. Phase metrics added in M4 are defined
+in [SQL diagnostics](sql-diagnostics.md); they are nested host-wall scopes.
+
+The [M4 stage evaluation](benchmarks/sql-m4-acceptance.md) archives the expanded
+profile evidence and distinguishes Metal improvements from its unmet CPU-win gate.
